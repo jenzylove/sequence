@@ -1,0 +1,2 @@
+@somnia-chain/reactivity-contracts/=node_modules/@somnia-chain/reactivity-contracts/
+forge-std/=lib/forge-std/src/
