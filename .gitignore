@@ -5,3 +5,8 @@ lib/
 node_modules/
 broadcast/
 .env
+
+.handler_address
+.target_market
+*.out
+node_modules/
