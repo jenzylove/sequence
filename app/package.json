@@ -1,0 +1,17 @@
+{
+  "name": "sequence-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sim": "tsx planner/demo.ts",
+    "resolutions": "tsx -e \"import('./planner/fetchResolutions.js').then(m=>m.fetchRecentResolutions(10)).then(r=>console.log(r))\"",
+    "test:live": "tsx --test planner/live.test.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "viem": "^2.56.3"
+  }
+}

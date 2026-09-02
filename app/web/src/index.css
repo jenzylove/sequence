@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+html { -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: #F7F9FC; }
+@layer components {
+  .in { @apply w-full box-border rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accentSoft; }
+}
