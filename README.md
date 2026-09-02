@@ -109,15 +109,12 @@ Live and verified:
   checks including comprehension checks that fail the build if contract
   vocabulary leaks into the primary interface
 
-Not yet live, and labelled as such in the product:
+Remaining:
 
-- the vault holds no Reactivity subscription, because subscribing stakes 32 SOM from
-  the vault itself
-- the vault holds no test USDC collateral, so no successor order has been placed
-
-Both are owner-signed transactions. The interface exposes them as a guided go-live
-path rather than hiding them in scripts, so the remaining step is a wallet signature,
-not more code.
+- no follow-on order has been placed on a real settlement yet. That needs a live
+  sequence and one of its watched markets to settle, which is a wallet signature
+  away rather than more code. Until it happens the product says so plainly
+  instead of implying otherwise.
 
 ## Deployed addresses (Shannon testnet)
 
