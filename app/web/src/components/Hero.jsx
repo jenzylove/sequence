@@ -24,16 +24,21 @@ export default function Hero({ onBuild }) {
         <div className="sequence-visual relative mx-auto h-[520px] w-full max-w-[650px] lg:mx-0">
           <div className="absolute left-[7%] top-[48%] h-16 w-16 opacity-70 dotted-coral" />
           <div className="absolute bottom-[4%] left-[22%] h-[185px] w-[255px] bg-[#c6f3f7] opacity-80 [clip-path:polygon(22%_0,100%_12%,92%_100%,0_88%)]" />
-          <svg className="absolute inset-0 z-[1] h-full w-full" viewBox="0 0 650 520" fill="none" aria-hidden="true">
-            <path d="M196 130c-18-43 20-85 68-73 50 12 28 68 57 83 28 15 65-7 86 22 16 22 3 54-19 68" stroke="#302D35" strokeWidth="1.15"/>
-            <path d="M195 130l-7-12m7 12 14-1" stroke="#302D35" strokeWidth="1.15"/>
+          <svg className="hero-flow-map absolute inset-0 z-[2] h-full w-full" viewBox="0 0 650 520" fill="none" aria-hidden="true">
+            <defs>
+              <marker id="flow-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M1 1l4.5 2.5L1 6" stroke="#514c57" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" /></marker>
+            </defs>
+            <path className="flow-path flow-path-one" d="M350 151 C354 182 395 175 423 194" markerEnd="url(#flow-arrow)" />
+            <path className="flow-path flow-path-two" d="M532 267 C538 318 477 326 429 344" markerEnd="url(#flow-arrow)" />
+            <circle className="flow-node flow-node-one" cx="350" cy="151" r="3" />
+            <circle className="flow-node flow-node-two" cx="532" cy="267" r="3" />
           </svg>
 
-          <article className="float-card absolute left-[30%] top-[2%] z-[4] w-[250px] border-l-[4px] border-[#62dbea] p-5">
+          <article className="float-card hero-flow-card card-watch absolute left-[30%] top-[2%] z-[4] w-[250px] border-l-[4px] border-[#62dbea] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="eyebrow">Step 01 · Watching</div>
-                <h3 className="card-title">Await settlement</h3>
+                <div className="eyebrow">Step 01 · <span className="status-copy"><span className="watching-label">Watching</span><span className="settled-label">Settled</span></span></div>
+                <h3 className="card-title"><span className="status-copy"><span className="watching-label">Await settlement</span><span className="settled-label">Market settled</span></span></h3>
               </div>
               <span className="status-dot bg-[#65dbe9]" />
             </div>
@@ -43,22 +48,22 @@ export default function Hero({ onBuild }) {
             </div>
           </article>
 
-          <article className="float-card absolute right-[0%] top-[20%] z-[3] w-[228px] border-l-[4px] border-[#ff9b7f] p-5">
+          <article className="float-card hero-flow-card card-outcome absolute right-[0%] top-[20%] z-[3] w-[228px] border-l-[4px] border-[#ff9b7f] p-5">
             <div className="eyebrow">When resolved</div>
             <h3 className="card-title">Read the outcome</h3>
             <div className="mt-5 space-y-3 border-t border-[#efedf1] pt-4 text-[10px]">
-              <div className="flex justify-between"><span className="text-[#827d87]">YES wins</span><b className="font-semibold text-[#27242b]">Continue</b></div>
+              <div className="outcome-selected flex justify-between"><span className="text-[#827d87]">YES wins</span><b className="font-semibold text-[#27242b]">Continue</b></div>
               <div className="flex justify-between"><span className="text-[#827d87]">NO wins</span><b className="font-semibold text-[#27242b]">Resize</b></div>
             </div>
           </article>
 
-          <article className="float-card absolute bottom-[9%] left-[18%] z-[5] w-[330px] border-l-[4px] border-[#8a70e8] p-5">
+          <article className="float-card hero-flow-card card-order absolute bottom-[9%] left-[18%] z-[5] w-[330px] border-l-[4px] border-[#8a70e8] p-5">
             <div className="flex items-start justify-between">
               <div>
                 <div className="eyebrow">Step 02 · Armed</div>
                 <h3 className="card-title">Place the next order</h3>
               </div>
-              <span className="rounded-full bg-[#f0ecff] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#7056c9]">Bounded</span>
+              <span className="order-state rounded-full bg-[#f0ecff] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#7056c9]"><span className="armed-label">Armed</span><span className="active-label">Active</span></span>
             </div>
             <div className="mt-5 grid grid-cols-3 gap-2 border-t border-[#efedf1] pt-4">
               <Metric label="Side" value="Buy YES" />
