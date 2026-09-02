@@ -92,7 +92,12 @@ cd app/web
 node scripts/gen-abi.mjs         # regenerate the ABI from the compiled artifact
 node scripts/verify-arm.mjs      # the real armStep path against live chain state
 npm run build && node scripts/e2e.mjs   # browser run of the whole journey
+node scripts/verify-clean-clone.mjs     # build HEAD in a fresh clone, as a deploy does
 ```
+
+The last one matters: a local build only proves the working tree compiles, not
+that everything it needs was committed. It clones HEAD into a temp directory and
+builds there, which is what a deployment actually sees.
 
 ## Current status
 
