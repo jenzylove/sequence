@@ -1,28 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
-import { simulate, branchPreview, resolutionsFromMarkets, fmt, KIND_LABEL } from "../sim.js";
+import { fmt } from "../sim.js";
 import {
   ORDER_TYPES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
   validate, notices, notionalOf, toVaultStep, onchainStepId,
 } from "../strategy.js";
 import { armStep } from "../chain/vault.js";
-import { marketLabel } from "../chain/markets.js";
 import { txUrl, addressUrl } from "../chain/config.js";
-import { ORDER_TYPE_COPY, money } from "../lib/language.js";
 import { upsertDraft } from "../lib/store.js";
+import {
+  marketName, marketQuestion, branchActions, describePlan,
+  countdown, settlePhrase, marketShortAsk, asOdds, ORDER_TYPE_COPY,
+} from "../lib/language.js";
 
-export default function Builder({ markets, vault, wallet, onWallet, initialDraft = null, advanced = false, onClose = null }) {
+// The builder, arranged as the questions a trader actually asks:
+//   what am I watching, what happens if it goes up, what if it goes down,
+//   how much can I lose, and what exactly happens after I activate.
+// Contract vocabulary lives only under "Onchain details".
+export default function Builder({ markets, vault, wallet, initialDraft = null, onWallet, onClose = null, onActivated }) {
   const [strategy, setStrategy] = useState(() => initialDraft || loadStrategy());
-  const [showRaw, setShowRaw] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [ran, setRan] = useState(null);
-  const [arming, setArming] = useState(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const [arming, setArming] = useState(false);
   const [armResult, setArmResult] = useState(null);
+  const [, tick] = useState(0);
 
-  // Seed once from real open markets if nothing is stored yet.
+  useEffect(() => {
+    const timer = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     if (strategy || markets.status !== "ready" || markets.open.length < 2) return;
     const seeded = seedFromMarkets(markets.open);
-    // Funds available is a real balance, not a guess.
     if (vault.state?.bankroll > 0n) seeded.bankroll = vault.state.bankroll;
     if (vault.state?.maxOutstanding > 0n) seeded.maxOutstanding = vault.state.maxOutstanding;
     setStrategy(seeded);
@@ -41,326 +50,310 @@ export default function Builder({ markets, vault, wallet, onWallet, initialDraft
 
   const errors = useMemo(() => (strategy ? validate(strategy) : []), [strategy]);
   const warnings = useMemo(() => (strategy ? notices(strategy) : []), [strategy]);
-  const errorsFor = (key) => errors.filter((e) => e.scope === key);
   const steps = strategy?.steps ?? [];
-  const selectedStep = steps.find((s) => s.key === selected);
+  const step = steps.find((s) => s.key === selected);
 
-  const committed = ran?.committed ?? steps.reduce((sum, s) => sum + notionalOf(s), 0n);
-  const exposure = strategy && strategy.maxOutstanding > 0n
-    ? Math.min(100, (Number(committed) / Number(strategy.maxOutstanding)) * 100)
-    : 0;
+  const marketById = (id) => markets.open.find((m) => m.marketId === id);
+  const trigger = step ? marketById(step.triggerMarketId) : null;
+  const successor = step ? marketById(step.successorMarketId) : null;
 
   const patch = (change) => setStrategy((cur) => ({ ...cur, ...change }));
-  const update = (key, change) => {
+  const update = (key, change) =>
     setStrategy((cur) => ({ ...cur, steps: cur.steps.map((s) => (s.key === key ? { ...s, ...change } : s)) }));
-    setRan(null);
-  };
-  const setTrigger = (key, marketId) => {
-    const m = markets.open.find((x) => x.marketId === marketId) || markets.resolved.find((x) => x.marketId === marketId);
-    update(key, { triggerMarketId: marketId, triggerLabel: m?.question || "", triggerExpiry: m?.expiry || null });
-  };
-  const setSuccessor = (key, marketId) => {
-    const m = markets.open.find((x) => x.marketId === marketId);
-    update(key, { successorMarketId: marketId, successorLabel: m?.question || "", successorExpiry: m?.expiry || null, pool: m?.pool || "" });
-  };
-  const addStep = () => {
-    const index = steps.length + 1;
-    const next = makeStep(index, { triggerMarket: markets.open[index - 1], successorMarket: markets.open[index] });
-    setStrategy((cur) => ({ ...cur, steps: [...cur.steps, next] }));
-    setSelected(next.key);
-    setRan(null);
-  };
-  const removeStep = (key) => {
-    setStrategy((cur) => ({ ...cur, steps: cur.steps.filter((s) => s.key !== key) }));
-    setRan(null);
-  };
 
-  // Replays the plan against genuine settled DreamDEX markets pulled from the
-  // Somnia indexer, using the vault's own winner, branch and cap rules.
-  const runSimulation = () => {
-    const history = resolutionsFromMarkets(markets.resolved).map((r) => ({ ...r, source: "settled" }));
-    const covered = new Set(history.map((r) => r.marketId.toLowerCase()));
-    // Steps watching a market that has not settled yet still get a projected
-    // pass so the preview shows what the plan does when it does settle.
-    const projected = steps
-      .filter((s) => s.triggerMarketId && !covered.has(s.triggerMarketId.toLowerCase()))
-      .map((s) => ({
-        marketId: s.triggerMarketId, questionId: "projected",
-        payoutNumerators: [10000000n, 0n], voided: false, source: "projected",
-      }));
-    setRan(simulate(strategy, [...history, ...projected]));
+  // Choosing a market to watch also picks the next window of the same kind to
+  // trade into, so a trader never has to reason about two pickers at once.
+  const chooseWatch = (key, marketId) => {
+    const m = marketById(marketId);
+    if (!m) return;
+    const next = markets.open
+      .filter((x) => x.asset === m.asset && x.intervalSec === m.intervalSec && (x.expiry || 0) > (m.expiry || 0))
+      .sort((a, b) => (a.expiry || 0) - (b.expiry || 0))[0]
+      || markets.open.find((x) => x.asset === m.asset && x.marketId !== m.marketId);
+    update(key, {
+      triggerMarketId: m.marketId, triggerLabel: m.question, triggerExpiry: m.expiry,
+      ...(next ? { successorMarketId: next.marketId, successorLabel: next.question, successorExpiry: next.expiry, pool: next.pool } : {}),
+    });
     setArmResult(null);
   };
-  const eventFor = (key) => ran?.events.find((e) => e.stepKey === key);
 
-  const owner = vault.state?.owner;
+  // "How much on this trade" is what a trader sets. Contracts come in whole
+  // lots, so the amount is rounded down to what can actually be bought, and the
+  // cap is set to exactly that. One number, shown everywhere, always true.
+  const setStake = (key, dollars) => {
+    const s = steps.find((x) => x.key === key);
+    if (!s) return;
+    const price = s.price > 0n ? s.price : 500000n;
+    const target = BigInt(Math.max(0, Math.round(Number(dollars || 0) * 1e6)));
+    let quantity = target / price;
+    if (quantity < 1n) quantity = 1n;
+    update(key, { quantity, notionalCap: price * quantity });
+    setArmResult(null);
+  };
+
+  const setRolling = (count) => {
+    setStrategy((cur) => {
+      const next = [...cur.steps];
+      while (next.length > count) next.pop();
+      while (next.length < count) {
+        const last = next[next.length - 1];
+        const lastMarket = marketById(last?.successorMarketId);
+        const following = markets.open
+          .filter((x) => lastMarket && x.asset === lastMarket.asset && x.intervalSec === lastMarket.intervalSec && (x.expiry || 0) > (lastMarket.expiry || 0))
+          .sort((a, b) => (a.expiry || 0) - (b.expiry || 0))[0];
+        if (!lastMarket || !following) break;
+        const added = makeStep(next.length + 1, { triggerMarket: lastMarket, successorMarket: following });
+        added.price = last.price; added.quantity = last.quantity;
+        added.notionalCap = last.notionalCap; added.buyYesOnWin0 = last.buyYesOnWin0;
+        added.orderType = last.orderType;
+        next.push(added);
+      }
+      return { ...cur, steps: next };
+    });
+    setArmResult(null);
+  };
+
   const isOwner = vault.isOwner(wallet.account);
-  const canArm = (step) =>
-    wallet.connected && wallet.onShannon && isOwner && !vault.state?.paused &&
-    errors.length === 0 && Boolean(step?.pool && step?.triggerMarketId);
+  const ready = wallet.connected && wallet.onShannon && isOwner && !vault.state?.paused && errors.length === 0 && steps.length > 0;
+  const blocker = !wallet.connected
+    ? "Connect your wallet to activate this."
+    : !wallet.onShannon ? "Switch your wallet to the Somnia network."
+    : !vault.state ? "Reading your account…"
+    : !isOwner ? "This wallet does not control the trading account."
+    : vault.state.paused ? "Trading is paused. Resume it first."
+    : errors.length ? errors[0].message
+    : null;
 
-  const armReason = (step) => {
-    if (!wallet.connected) return "Connect a wallet to put this live.";
-    if (!wallet.onShannon) return "Switch your wallet to the Somnia network.";
-    if (!vault.state) return "Reading your account from the network.";
-    if (!isOwner) return "This wallet does not control the trading account.";
-    if (vault.state.paused) return "Trading is paused. Resume it first.";
-    if (errors.length) return errors[0].message;
-    if (!step?.pool || !step?.triggerMarketId) return "Pick both markets first.";
-    return "";
-  };
-
-  const doArm = async (step) => {
+  const activate = async () => {
+    setArming(true);
     setArmResult(null);
-    setArming(step.key);
+    const done = [];
     try {
-      const stepId = onchainStepId(strategy, step);
-      const result = await armStep({
-        provider: wallet.provider, account: wallet.account, stepId, step: toVaultStep(step),
-      });
-      vault.track({
-        stepId, key: step.key, name: step.name, strategy: strategy.name,
-        triggerLabel: step.triggerLabel, successorLabel: step.successorLabel,
-        triggerMarketId: step.triggerMarketId, pool: step.pool,
-        blockNumber: result.blockNumber.toString(), txHash: result.hash, armedAt: Date.now(),
-      });
-      setArmResult({ ok: result.status === "success", hash: result.hash, key: step.key });
+      for (const s of strategy.steps) {
+        const stepId = onchainStepId(strategy, s);
+        const result = await armStep({ provider: wallet.provider, account: wallet.account, stepId, step: toVaultStep(s) });
+        const t = marketById(s.triggerMarketId);
+        const n = marketById(s.successorMarketId);
+        vault.track({
+          stepId, key: s.key, name: s.name, strategy: strategy.name,
+          triggerLabel: t?.question || s.triggerLabel, successorLabel: n?.question || s.successorLabel,
+          triggerMarketId: s.triggerMarketId, triggerExpiry: s.triggerExpiry, pool: s.pool,
+          blockNumber: result.blockNumber.toString(), txHash: result.hash, armedAt: Date.now(),
+        });
+        done.push(result.hash);
+      }
+      setArmResult({ ok: true, hash: done[0], count: done.length });
+      onActivated?.(strategy);
     } catch (cause) {
-      setArmResult({ ok: false, key: step.key, error: cause?.shortMessage || cause?.message || "The transaction was not sent." });
+      setArmResult({ ok: false, error: cause?.shortMessage || cause?.message || "That did not go through. Nothing was risked." });
     } finally {
-      setArming(null);
+      setArming(false);
     }
   };
 
-  if (!strategy) {
+  if (!strategy || !step) {
     return (
       <section id="build" className="product-band">
         <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-32">
-          <span className="section-tag bg-[#52d8ed]">Builder</span>
+          <span className="section-tag bg-[#52d8ed]">Build</span>
           <h2 className="mt-5 max-w-[520px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Set the rules.<br />See the risk.</h2>
           <div className="workspace-card mt-16 p-10 text-[12px] text-[#77717d]">
             {markets.status === "error"
-              ? <>Could not reach the Somnia markets indexer. <button onClick={markets.reload} className="font-bold text-[#6f58c2]">Retry</button></>
-              : "Loading live DreamDEX markets from Somnia…"}
+              ? <>Live markets are unavailable right now. <button onClick={markets.reload} className="font-bold text-[#6f58c2]">Try again</button></>
+              : "Loading live markets…"}
           </div>
         </div>
       </section>
     );
   }
 
+  const branches = branchActions(step, successor);
+  const stake = notionalOf(step);
+  const odds = trigger ? asOdds(trigger.lastPrice) : null;
+  const watchable = markets.open.filter((m) => m.pool);
+
   return (
     <section id="build" className="product-band">
-      <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-32">
+      <div className="mx-auto max-w-[1280px] px-7 py-20 sm:px-12 lg:px-16 lg:py-24">
         <div className="grid items-end gap-10 lg:grid-cols-[.8fr_1.2fr]">
           <div>
-            <span className="section-tag bg-[#52d8ed]">{advanced ? "Advanced builder" : "Try it"}</span>
+            <span className="section-tag bg-[#52d8ed]">Build</span>
             <h2 className="mt-5 max-w-[520px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Set the rules.<br />See the risk.</h2>
           </div>
           <div className="max-w-[520px] lg:justify-self-end">
-            <p className="text-[14px] leading-[1.75] text-[#65616b]">Set each follow-on trade by hand. Every number here is the same one your account checks before it risks anything.</p>
-            <div className="mt-5 flex flex-wrap items-center gap-7 text-[10px] font-semibold uppercase tracking-[.13em] text-[#98939d]">
-              <span>Live markets</span><span>Test it first</span><span>Limits enforced</span>
-              {onClose && <button onClick={onClose} className="normal-case tracking-normal text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Back to your desk</button>}
-            </div>
+            <p className="text-[14px] leading-[1.75] text-[#65616b]">Pick the market you are watching, say what to do on each result, and set the most you are willing to risk. Sequence does the rest the moment it settles.</p>
+            {onClose && (
+              <button onClick={onClose} className="mt-5 text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Back to your sequences</button>
+            )}
           </div>
         </div>
 
-        <div className="workspace-card mt-16">
+        <div className="workspace-card mt-14">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#ece9ef] px-6 py-4 lg:px-8">
             <div className="flex items-center gap-3">
               <span className="h-2 w-2 rounded-full bg-[#8b72e8] shadow-[0_0_0_5px_rgba(139,114,232,.12)]" />
-              <input aria-label="Sequence name" value={strategy.name} onChange={(e) => patch({ name: e.target.value })} className="w-[190px] bg-transparent text-[13px] font-bold tracking-[-.02em] text-[#242128] outline-none" />
-              <span className="text-[10px] text-[#aaa5ae]">Saved locally</span>
+              <input aria-label="Sequence name" value={strategy.name} onChange={(e) => patch({ name: e.target.value })} className="w-[210px] bg-transparent text-[13px] font-bold tracking-[-.02em] text-[#242128] outline-none" />
             </div>
-            <div className="flex items-center gap-3">
-              <span className="hidden text-[10px] text-[#928d97] sm:block">{markets.status === "ready" ? `${markets.open.length} live markets` : markets.status === "error" ? "Indexer unreachable" : "Loading markets…"}</span>
-              <button disabled={errors.length > 0} onClick={runSimulation} className="soft-button bg-[#111014] text-white disabled:opacity-35">Preview sequence</button>
-            </div>
+            <span className="text-[10px] text-[#928d97]">{markets.status === "ready" ? `${watchable.length} markets open` : "Loading markets…"}</span>
           </div>
 
-          <div className="grid lg:grid-cols-[300px_1fr]">
-            <aside className="border-b border-[#ece9ef] bg-[#fbfbfc] p-6 lg:border-b-0 lg:border-r lg:p-8">
-              <div className="mb-6 flex items-center justify-between">
-                <div><div className="micro-label">Sequence path</div><div className="mt-1 text-[11px] text-[#99949e]">{steps.length} bounded actions</div></div>
-                <button aria-label="Add successor step" onClick={addStep} className="grid h-8 w-8 place-items-center rounded-full border border-[#dfdbe3] bg-white text-lg font-light text-[#514c57] transition hover:border-[#8b72e8]">+</button>
-              </div>
-              <div className="relative">
-                <div className="absolute bottom-7 left-[11px] top-7 w-px bg-[#ded9e3]" />
-                {steps.map((step, index) => {
-                  const event = eventFor(step.key);
-                  const bad = errorsFor(step.key).length > 0;
-                  return (
-                    <button key={step.key} onClick={() => setSelected(step.key)} className={`sequence-step group relative mb-3 text-left ${selected === step.key ? "is-selected" : ""}`}>
-                      <span className={`absolute -left-[26px] top-5 grid h-[22px] w-[22px] place-items-center rounded-full border bg-white text-[9px] font-bold ${event?.action === "EXECUTED" ? "border-[#55b58a] text-[#42946f]" : event ? "border-[#d1ccd5] text-[#aaa5ae]" : bad ? "border-[#e9b4a6] text-[#d1795f]" : "border-[#8b72e8] text-[#7056c9]"}`}>{index + 1}</span>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[12px] font-bold text-[#252229]">{step.triggerMarketId ? stepHeadline(step) : "Pick a market"}</div>
-                          <div className="mt-2 text-[10px] text-[#817c86]">Outcome 0 → <b className="font-semibold text-[#38343d]">{step.buyYesOnWin0 ? "Buy YES" : "Buy NO"}</b></div>
-                        </div>
-                        <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${event?.action === "EXECUTED" ? "bg-[#55b58a]" : event ? "bg-[#c7c2ca]" : bad ? "bg-[#e28e75]" : "bg-[#8b72e8]"}`} />
-                      </div>
-                      <div className="mt-4 flex justify-between border-t border-[#efecf1] pt-3 font-mono text-[9px] text-[#99949d]"><span>{fmt(notionalOf(step))}</span><span>cap {fmt(step.notionalCap)}</span></div>
-                    </button>
-                  );
-                })}
-              </div>
-              <button onClick={addStep} className="mt-2 w-full rounded-sm border border-dashed border-[#d9d4de] px-4 py-3 text-[10px] font-semibold text-[#746e79] transition hover:border-[#8b72e8] hover:text-[#5e46bb]">+ Add successor</button>
-            </aside>
-
-            <div className="p-6 lg:p-8 xl:p-10">
-              <div className="grid gap-8 xl:grid-cols-[1fr_260px]">
-                {selectedStep && (
-                  <div>
-                    <div className="flex items-start justify-between gap-6">
-                      <div>
-                        <div className="micro-label">Edit step {steps.findIndex((s) => s.key === selectedStep.key) + 1}</div>
-                        <h3 className="mt-2 text-[25px] font-extrabold tracking-[-.04em] text-[#151318]">Define the next action</h3>
-                      </div>
-                      {steps.length > 1 && <button onClick={() => removeStep(selectedStep.key)} className="text-[10px] font-semibold text-[#aaa4ae] transition hover:text-[#ee7d66]">Remove</button>}
-                    </div>
-
-                    <div className="mt-8 grid gap-x-5 gap-y-6 sm:grid-cols-2">
-                      <Field label="Watch this market settle">
-                        <select className="product-input" value={selectedStep.triggerMarketId} onChange={(e) => setTrigger(selectedStep.key, e.target.value)}>
-                          <option value="">Select a live market…</option>
-                          {markets.open.map((m) => <option key={m.marketId} value={m.marketId}>{marketLabel(m)} · {m.question}</option>)}
-                          {selectedStep.triggerMarketId && !markets.open.some((m) => m.marketId === selectedStep.triggerMarketId) &&
-                            <option value={selectedStep.triggerMarketId}>{selectedStep.triggerLabel || "Previously selected market"}</option>}
-                        </select>
-                      </Field>
-                      <Field label="Then trade this market">
-                        <select className="product-input" value={selectedStep.successorMarketId} onChange={(e) => setSuccessor(selectedStep.key, e.target.value)}>
-                          <option value="">Select a successor market…</option>
-                          {markets.open.map((m) => <option key={m.marketId} value={m.marketId}>{marketLabel(m)} · {m.question}</option>)}
-                          {selectedStep.successorMarketId && !markets.open.some((m) => m.marketId === selectedStep.successorMarketId) &&
-                            <option value={selectedStep.successorMarketId}>{selectedStep.successorLabel || "Previously selected market"}</option>}
-                        </select>
-                      </Field>
-                      <Field label="Price per contract"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.price) / 1e6} onChange={(e) => update(selectedStep.key, { price: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
-                      <Field label="How many contracts"><div className="input-prefix"><input type="number" value={Number(selectedStep.quantity)} onChange={(e) => update(selectedStep.key, { quantity: BigInt(Math.max(0, Math.round(Number(e.target.value)))) })} /><span>contracts</span></div></Field>
-                      <Field label="Most to risk here"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.notionalCap) / 1e6} onChange={(e) => update(selectedStep.key, { notionalCap: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
-                      <Field label="If it lands YES">
-                        <select className="product-input" value={selectedStep.buyYesOnWin0 ? "yes" : "no"} onChange={(e) => update(selectedStep.key, { buyYesOnWin0: e.target.value === "yes" })}>
-                          <option value="yes">Buy YES</option><option value="no">Buy NO</option>
-                        </select>
-                      </Field>
-                      <Field label="How to fill it">
-                        <select className="product-input" value={selectedStep.orderType} onChange={(e) => update(selectedStep.key, { orderType: Number(e.target.value) })}>
-                          {ORDER_TYPES.map((t) => <option key={t.value} value={t.value}>{ORDER_TYPE_COPY[t.value]?.label || t.label}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Trade goes to">
-                        <div className="product-input truncate text-[12px] text-[#77717d]">{selectedStep.successorLabel ? "The market you picked above" : "Pick a market above"}</div>
-                      </Field>
-                    </div>
-
-                    <div className="mt-6">
-                      <button onClick={() => setShowRaw((v) => !v)} className="details-toggle">
-                        {showRaw ? "Hide onchain details" : "Onchain details"}
-                      </button>
-                      {showRaw && (
-                        <dl className="mt-4 space-y-2.5 rounded-sm border border-[#ece9ef] bg-[#fbfbfc] p-5 font-mono text-[9px] leading-[1.6] text-[#77717d]">
-                          <RawRow label="Trigger market id" value={selectedStep.triggerMarketId} />
-                          <RawRow label="Successor market id" value={selectedStep.successorMarketId} />
-                          <RawRow label="Binary pool" value={selectedStep.pool} href={selectedStep.pool ? addressUrl(selectedStep.pool) : null} />
-                          <RawRow label="Order price (raw, 6dp)" value={selectedStep.price.toString()} />
-                          <RawRow label="Quantity" value={selectedStep.quantity.toString()} />
-                          <RawRow label="Notional cap (raw)" value={selectedStep.notionalCap.toString()} />
-                          <RawRow label="Order type" value={`${selectedStep.orderType} · ${ORDER_TYPE_COPY[selectedStep.orderType]?.label}`} />
-                        </dl>
-                      )}
-                    </div>
-
-                    <div className="mt-8 rounded-sm border border-[#ece9ef] bg-[#fbfbfc] p-5">
-                      <div className="micro-label">What each outcome does</div>
-                      <div className="mt-4 space-y-2.5">
-                        {branchPreview(strategy, selectedStep).map((row) => (
-                          <div key={row.win} className="flex items-center justify-between text-[10px]">
-                            <span className="text-[#827d87]">{row.win === 255 ? "Market voided" : `Outcome ${row.win} wins`}</span>
-                            <span className={`font-semibold ${row.action === "EXECUTED" ? "text-[#40906b]" : "text-[#8d8792]"}`}>
-                              {row.action === "EXECUTED" ? `${KIND_LABEL[row.kind]} · ${fmt(row.notional)}` : `Skip · ${row.reason}`}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-8 rounded-sm border border-[#ece9ef] p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                          <div className="micro-label">Put this step live</div>
-                          <p className="mt-2 max-w-[360px] text-[10px] leading-[1.65] text-[#77717d]">
-                            You approve this in your wallet. From then on it runs on its own, and your account will not let it risk more than the limits you set.
-                          </p>
-                        </div>
-                        {canArm(selectedStep)
-                          ? <button onClick={() => doArm(selectedStep)} disabled={arming === selectedStep.key} className="soft-button bg-[#111014] text-white disabled:opacity-50">{arming === selectedStep.key ? "Approve in your wallet…" : "Put it live"}</button>
-                          : <button onClick={wallet.connected ? undefined : onWallet} disabled={wallet.connected} className="soft-button border border-[#dcd7e1] bg-white text-[#252229] disabled:opacity-45">{wallet.connected ? "Not ready yet" : "Connect wallet"}</button>}
-                      </div>
-                      {!canArm(selectedStep) && <p className="mt-3 text-[10px] font-semibold text-[#a8a2ad]">{armReason(selectedStep)}</p>}
-                      {armResult?.key === selectedStep.key && (
-                        armResult.ok
-                          ? <p className="mt-3 text-[10px] font-semibold text-[#40906b]">This step is live. <a className="text-[#6f58c2]" href={txUrl(armResult.hash)} target="_blank" rel="noreferrer">Receipt ↗</a></p>
-                          : <p className="mt-3 text-[10px] font-semibold text-[#dc6e58]" role="alert">{armResult.error || "The transaction did not succeed."}</p>
-                      )}
-                    </div>
+          <div className="grid lg:grid-cols-[1fr_320px]">
+            <div className="space-y-9 p-6 lg:p-9">
+              <Question n={1} title="What are you watching?">
+                <select
+                  className="product-input"
+                  aria-label="Market to watch"
+                  value={step.triggerMarketId}
+                  onChange={(e) => chooseWatch(step.key, e.target.value)}
+                >
+                  <option value="">Choose a market…</option>
+                  {watchable.map((m) => (
+                    <option key={m.marketId} value={m.marketId}>
+                      {marketName(m)}{marketShortAsk(m) ? ` · ${marketShortAsk(m)}` : ""} — {settlePhrase(m.expiry)}
+                    </option>
+                  ))}
+                </select>
+                {trigger && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-[#7f7984]">
+                    <span>{marketQuestion(trigger)}</span>
+                    <span className="text-[#a19ca5]">{settlePhrase(trigger.expiry)}</span>
+                    {odds !== null && <span className="odds-pill">{odds}% yes</span>}
                   </div>
                 )}
+              </Question>
 
-                <aside className="risk-card">
-                  <div className="flex items-center justify-between">
-                    <span className="micro-label">Risk preview</span>
-                    <span className={`rounded-full px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em] ${errors.length ? "bg-[#fff0ec] text-[#e27259]" : warnings.length ? "bg-[#fff8f0] text-[#b8823f]" : "bg-[#eaf7f0] text-[#40906b]"}`}>{errors.length ? "Review" : warnings.length ? "Cap will bind" : "Within caps"}</span>
-                  </div>
-                  <div className="mt-7">
-                    <div className="text-[9px] uppercase tracking-[.12em] text-[#a39ea7]">Planned exposure</div>
-                    <div className="mt-1 text-[30px] font-extrabold tracking-[-.05em] text-[#161419]">{fmt(committed)}</div>
-                    <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-[#ebe8ee]"><div className="h-full rounded-full bg-[#8b72e8] transition-all" style={{ width: `${exposure}%` }} /></div>
-                    <div className="mt-2 flex justify-between font-mono text-[8px] text-[#aaa5ae]"><span>committed</span><span>{fmt(strategy.maxOutstanding)} cap</span></div>
-                  </div>
-                  <div className="mt-7 space-y-4 border-t border-[#e7e3ea] pt-5">
-                    <RiskRow label="Funds available" value={<input aria-label="Bankroll" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.bankroll) / 1e6} onChange={(e) => patch({ bankroll: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
-                    <RiskRow label="Your total limit" value={<input aria-label="Vault cap" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.maxOutstanding) / 1e6} onChange={(e) => patch({ maxOutstanding: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
-                    <RiskRow label="Limit checks" value={errors.length ? `${errors.length} issue${errors.length > 1 ? "s" : ""}` : warnings.length ? "Cap will bind" : "Passing"} good={!errors.length && !warnings.length} />
-                    <RiskRow label="Limit on your account" value={vault.state ? fmt(vault.state.maxOutstanding) : "reading…"} />
-                  </div>
-                  {errors.length > 0 && (
-                    <ul className="mt-5 space-y-2 border-t border-[#e7e3ea] pt-5 text-[9px] leading-[1.5] text-[#c47b64]">
-                      {errors.slice(0, 4).map((e, i) => <li key={i}>{e.message}</li>)}
-                    </ul>
-                  )}
-                  {errors.length === 0 && warnings.length > 0 && (
-                    <ul className="mt-5 space-y-2 border-t border-[#e7e3ea] pt-5 text-[9px] leading-[1.5] text-[#a8834f]">
-                      {warnings.map((w, i) => <li key={i}>{w}</li>)}
-                    </ul>
-                  )}
-                </aside>
-              </div>
-
-              <div className={`simulation-strip mt-10 ${ran ? "has-result" : ""}`}>
-                <div>
-                  <div className="micro-label">Simulation</div>
-                  <p className="mt-2 max-w-[520px] text-[11px] leading-[1.65] text-[#77717d]">
-                    Runs your rules against markets that have already settled, using exactly the logic your account uses when it trades for real. Nothing moves and nothing is risked.
-                  </p>
+              <Question n={2} title="What should happen when it settles?">
+                <div className="space-y-3">
+                  <BranchRow label="If YES" tone="up" action={branches.yes.text} amount={branches.yes.size} />
+                  <BranchRow label="If NO" tone="down" action={branches.no.text} amount={branches.no.size} />
                 </div>
-                {errors.length > 0
-                  ? <div className="text-[10px] font-semibold text-[#dc6e58]">{errors[0].message}</div>
-                  : ran
-                    ? <div className="flex flex-wrap items-center gap-5">
-                        {ran.events.length === 0 && <span className="text-[10px] text-[#8d8792]">No settled market in the recent window matches these steps yet.</span>}
-                        {ran.events.map((event, i) => (
-                          <span key={`${event.stepKey}-${i}`} className="flex items-center gap-2 text-[10px] text-[#68636d]">
-                            <i className={`h-1.5 w-1.5 rounded-full ${event.action === "EXECUTED" ? "bg-[#55b58a]" : "bg-[#c7c2ca]"}`} />
-                            {event.action === "EXECUTED" ? `${KIND_LABEL[event.kind]} · ${fmt(event.notional)}` : `Skipped · ${event.reason}`}
-                            <b className="text-[8px] font-bold uppercase tracking-[.1em] text-[#aaa5ae]">{event.source === "settled" ? "settled" : "projected"}</b>
-                          </span>
-                        ))}
-                        <button onClick={runSimulation} className="soft-button border border-[#dcd7e1] bg-white text-[#252229]">Run again</button>
-                      </div>
-                    : <button onClick={runSimulation} className="soft-button bg-[#111014] text-white">Run preview</button>}
+                <button
+                  onClick={() => { update(step.key, { buyYesOnWin0: !step.buyYesOnWin0 }); setArmResult(null); }}
+                  className="mt-3 text-[10px] font-semibold text-[#6f58c2] transition hover:text-[#4e3a92]"
+                >
+                  Swap the two sides
+                </button>
+                <p className="mt-3 text-[10px] leading-[1.6] text-[#a19ca5]">
+                  Sequence acts on whichever way it settles. If the market is cancelled or the result is unclear, it does nothing and risks nothing.
+                </p>
+              </Question>
+
+              <Question n={3} title="How much on each trade?">
+                <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-[9px] font-bold uppercase tracking-[.12em] text-[#9d98a2]">Per trade</span>
+                    <div className="input-prefix">
+                      <span>$</span>
+                      <input
+                        type="number" step="0.5" min="0"
+                        aria-label="Amount per trade"
+                        value={Number(notionalOf(step)) / 1e6}
+                        onChange={(e) => setStake(step.key, e.target.value)}
+                      />
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[9px] font-bold uppercase tracking-[.12em] text-[#9d98a2]">Maximum total risk</span>
+                    <div className="input-prefix">
+                      <span>$</span>
+                      <input
+                        type="number" step="1" min="0"
+                        aria-label="Maximum total risk"
+                        value={Number(strategy.maxOutstanding) / 1e6}
+                        onChange={(e) => patch({ maxOutstanding: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })}
+                      />
+                    </div>
+                  </label>
+                </div>
+                <p className="mt-3 text-[10px] leading-[1.6] text-[#a19ca5]">
+                  Contracts trade in whole lots, so the amount rounds down to what can actually be bought. Your account enforces the total itself and will stand down any trade that would take you past it.
+                </p>
+              </Question>
+
+              <Question n={4} title="And after that?">
+                <div className="flex flex-wrap gap-2.5">
+                  <ChoiceChip active={steps.length === 1} onClick={() => setRolling(1)}>Stop</ChoiceChip>
+                  {[2, 3, 4].map((n) => (
+                    <ChoiceChip key={n} active={steps.length === n} onClick={() => setRolling(n)}>
+                      Keep rolling · {n} settlements
+                    </ChoiceChip>
+                  ))}
+                </div>
+              </Question>
+
+              <div>
+                <button onClick={() => setShowRaw((v) => !v)} className="details-toggle">
+                  {showRaw ? "Hide onchain details" : "Onchain details"}
+                </button>
+                {showRaw && (
+                  <dl className="mt-4 space-y-2.5 rounded-sm border border-[#ece9ef] bg-[#fbfbfc] p-5 font-mono text-[9px] leading-[1.6] text-[#77717d]">
+                    <RawRow label="Watched market id" value={step.triggerMarketId} />
+                    <RawRow label="Successor market id" value={step.successorMarketId} />
+                    <RawRow label="Binary pool" value={step.pool} href={step.pool ? addressUrl(step.pool) : null} />
+                    <RawRow label="Limit price (raw, 6dp)" value={step.price.toString()} />
+                    <RawRow label="Quantity" value={step.quantity.toString()} />
+                    <RawRow label="Per-step notional cap (raw)" value={step.notionalCap.toString()} />
+                    <RawRow label="Vault max outstanding (raw)" value={strategy.maxOutstanding.toString()} />
+                    <RawRow label="Raw market question" value={trigger?.question || step.triggerLabel || "—"} />
+                    <div className="pt-1">
+                      <select
+                        className="w-full bg-transparent font-mono text-[9px] text-[#77717d] outline-none"
+                        aria-label="Order type"
+                        value={step.orderType}
+                        onChange={(e) => update(step.key, { orderType: Number(e.target.value) })}
+                      >
+                        {ORDER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.value} · {ORDER_TYPE_COPY[t.value]?.label}</option>)}
+                      </select>
+                    </div>
+                  </dl>
+                )}
               </div>
             </div>
+
+            <aside className="border-t border-[#ece9ef] bg-[#fbfbfc] p-6 lg:border-l lg:border-t-0 lg:p-8">
+              <div className="micro-label">What will happen</div>
+              <p className="mt-4 text-[12px] leading-[1.75] text-[#3f3a47]">{describePlan(strategy, markets.open)}</p>
+
+              <div className="mt-7 space-y-4 border-t border-[#e7e3ea] pt-6">
+                <Row label="On each trade" value={fmt(stake)} />
+                <Row label="Trades in this sequence" value={String(steps.length)} />
+                <Row label="Most at risk at once" value={fmt(strategy.maxOutstanding)} strong />
+              </div>
+
+              {warnings.length > 0 && errors.length === 0 && (
+                <ul className="mt-5 space-y-2 border-t border-[#e7e3ea] pt-5 text-[10px] leading-[1.55] text-[#a8834f]">
+                  {warnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              )}
+              {errors.length > 0 && (
+                <ul className="mt-5 space-y-2 border-t border-[#e7e3ea] pt-5 text-[10px] leading-[1.55] text-[#c47b64]">
+                  {errors.slice(0, 3).map((e, i) => <li key={i}>{e.message}</li>)}
+                </ul>
+              )}
+
+              <div className="mt-7">
+                {wallet.connected ? (
+                  <button disabled={!ready || arming} onClick={activate} className="soft-button w-full bg-[#111014] py-3 text-white disabled:opacity-35">
+                    {arming ? "Approve in your wallet…" : `Activate sequence · risk ${fmt(strategy.maxOutstanding)}`}
+                  </button>
+                ) : (
+                  <button onClick={onWallet} className="soft-button w-full bg-[#111014] py-3 text-white">Connect wallet to activate</button>
+                )}
+                {blocker && <p className="mt-3 text-[10px] font-semibold text-[#a8a2ad]">{blocker}</p>}
+                {armResult?.ok && (
+                  <p className="mt-3 text-[10px] font-semibold text-[#40906b]">
+                    Live. {armResult.count > 1 ? `${armResult.count} trades are` : "It is"} waiting on the market now.{" "}
+                    <a className="text-[#6f58c2]" href={txUrl(armResult.hash)} target="_blank" rel="noreferrer">Receipt ↗</a>
+                  </p>
+                )}
+                {armResult && !armResult.ok && (
+                  <p className="mt-3 text-[10px] font-semibold text-[#dc6e58]" role="alert">{armResult.error}</p>
+                )}
+                <p className="mt-3 text-[10px] leading-[1.55] text-[#a19ca5]">
+                  You approve {steps.length === 1 ? "one transaction" : `${steps.length} transactions, one per trade`}. Nothing moves until you do.
+                </p>
+              </div>
+            </aside>
           </div>
         </div>
       </div>
@@ -368,22 +361,48 @@ export default function Builder({ markets, vault, wallet, onWallet, initialDraft
   );
 }
 
-function stepHeadline(step) {
-  const when = step.triggerExpiry ? new Date(step.triggerExpiry * 1000).toUTCString().slice(17, 22) : "";
-  const asset = /BTC/i.test(step.triggerLabel) ? "BTC" : /ETH/i.test(step.triggerLabel) ? "ETH" : "Market";
-  return when ? `${asset} · ${when} UTC` : asset;
+function Question({ n, title, children }) {
+  return (
+    <section>
+      <div className="flex items-baseline gap-3">
+        <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border border-[#8b72e8] text-[9px] font-bold text-[#7056c9]">{n}</span>
+        <h3 className="text-[16px] font-extrabold tracking-[-.03em] text-[#151318]">{title}</h3>
+      </div>
+      <div className="mt-4 pl-[34px]">{children}</div>
+    </section>
+  );
+}
+
+function BranchRow({ label, tone, action, amount }) {
+  return (
+    <div className={`branch-row ${tone}`}>
+      <span className="branch-label">{label}</span>
+      <span className="flex-1 text-[12px] font-semibold text-[#28252c]">{action}</span>
+      <span className="text-[12px] font-bold text-[#151318]">{amount}</span>
+    </div>
+  );
+}
+
+function ChoiceChip({ active, onClick, children }) {
+  return <button onClick={onClick} className={`choice-chip ${active ? "is-active" : ""}`}>{children}</button>;
+}
+
+function Row({ label, value, strong }) {
+  return (
+    <div className="flex items-center justify-between text-[11px]">
+      <span className="text-[#8d8792]">{label}</span>
+      <span className={`font-bold ${strong ? "text-[16px] tracking-[-.03em] text-[#161419]" : "text-[#312d35]"}`}>{value}</span>
+    </div>
+  );
 }
 
 function RawRow({ label, value, href }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <dt className="shrink-0 not-italic">{label}</dt>
+      <dt className="shrink-0">{label}</dt>
       <dd className="truncate text-right text-[#4f4a56]">
         {href ? <a href={href} target="_blank" rel="noreferrer" className="hover:text-[#6f58c2]">{value} ↗</a> : (value || "—")}
       </dd>
     </div>
   );
 }
-
-function Field({ label, children }) { return <label className="block"><span className="mb-2 block text-[9px] font-bold uppercase tracking-[.12em] text-[#9d98a2]">{label}</span>{children}</label>; }
-function RiskRow({ label, value, good }) { return <div className="flex items-center justify-between text-[10px]"><span className="text-[#8d8792]">{label}</span><span className={`font-semibold ${good ? "text-[#40906b]" : "text-[#312d35]"}`}>{value}</span></div>; }

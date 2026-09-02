@@ -76,10 +76,18 @@ async function newPage(viewport, { owner } = {}) {
   return { context, page };
 }
 
-const connect = async (page) => {
+const connect = async (page, { land = "home" } = {}) => {
   await page.getByRole("button", { name: "Connect wallet" }).first().click();
   await page.getByRole("button", { name: /Test harness wallet/ }).click();
-  await page.waitForSelector("#dashboard", { timeout: 30000 });
+  await page.waitForSelector(land === "build" ? "#build" : "#dashboard", { timeout: 30000 });
+};
+
+// Connecting from the nav's Connect wallet lands on home; the product's own
+// call to action lands in the builder. Both routes are exercised.
+const connectViaBuild = async (page) => {
+  await page.getByRole("button", { name: "Build your sequence" }).first().click();
+  await page.getByRole("button", { name: /Test harness wallet/ }).click();
+  await page.waitForSelector("#build", { timeout: 30000 });
 };
 
 // ---------------------------------------------------------------- metadata
@@ -107,10 +115,27 @@ const connect = async (page) => {
   const { context, page } = await newPage({ width: 1440, height: 1000 });
   await page.goto(base, { waitUntil: "domcontentloaded" });
   check("landing states the promise up front", (await page.getByRole("heading", { level: 1 }).innerText()).includes("Plan the next"));
+  check("landing explains how it works", (await page.locator("#how-it-works").count()) === 1);
 
-  await page.waitForSelector("text=live markets", { timeout: 30000 });
-  const options = await page.locator("select").first().locator("option").count();
-  check("visitor can try the builder on live markets", options > 2, `${options - 1} markets`);
+  // A landing page, not a console: no account or protocol state may appear.
+  const publicText = await page.locator("body").innerText();
+  const publicLeaks = [
+    ["contract address", /0x[0-9a-fA-F]{40}/],
+    ["market id", /0x[0-9a-fA-F]{64}/],
+    ["chain id", /chain\s*50312/i],
+    ["vault wording", /vault/i],
+    ["protocol internals", /reactivity|oraclehub|answerdelivered|precompile/i],
+    ["account balances", /at risk now|still free|your limit/i],
+    ["raw pricefeed question", /pricefeed test/i],
+  ].filter(([, re]) => re.test(publicText)).map(([n]) => n);
+  check("public landing leaks no account or protocol state", publicLeaks.length === 0, publicLeaks.join(", "));
+  check("builder is not exposed before connecting", (await page.locator("#build").count()) === 0);
+
+  // The main call to action must start the product, not scroll to nothing.
+  await page.getByRole("button", { name: "Build your sequence" }).first().click();
+  await page.waitForTimeout(500);
+  const ask = await page.locator("[role=dialog]").innerText();
+  check("Build your sequence asks for a wallet first", /Connect a wallet to build a sequence/i.test(ask));
 
   await page.screenshot({ path: join(shots, "e2e-landing.png"), fullPage: true });
   await context.close();
@@ -120,7 +145,10 @@ const connect = async (page) => {
 {
   const { context, page } = await newPage({ width: 1440, height: 1000 }, { owner: "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324" });
   await page.goto(base, { waitUntil: "domcontentloaded" });
-  await connect(page);
+  await connectViaBuild(page);
+  check("the call to action lands in the builder, not a dashboard", (await page.locator("#build").count()) === 1);
+
+  await page.getByRole("button", { name: "Your sequences", exact: true }).click();
   await page.waitForSelector(".risk-summary", { timeout: 45000 });
   await page.waitForSelector(".market-tile", { timeout: 45000 });
 
@@ -130,6 +158,7 @@ const connect = async (page) => {
   check("desk shows what is at risk and the limit", /At risk now/i.test(dash) && /Your limit/i.test(dash));
   check("desk shows free headroom", /Still free/i.test(dash));
   check("desk offers Drafts / Live / Finished", /Drafts/.test(dash) && /Live/.test(dash) && /Finished/.test(dash));
+  check("desk has a New sequence button", (await page.getByRole("button", { name: "New sequence" }).count()) > 0);
   check("desk has a clear new-sequence entry point", /What should happen next\?/i.test(dash));
 
   // The risk limit is a real onchain setting, reachable from the headline number.
@@ -153,7 +182,7 @@ const connect = async (page) => {
   await page.waitForTimeout(900);
   const readback = await page.locator(".command-card").innerText();
   check("plain English becomes a readable plan", /Here is what that does/i.test(readback));
-  check("plan explains both outcomes", /if it lands YES/i.test(readback) && /If it lands NO/i.test(readback));
+  check("plan explains both outcomes", /closes up/i.test(readback) && /closes down/i.test(readback));
   check("plan states the worst case", /Most you can lose/i.test(readback));
   check("plan offers explicit activation", (await page.getByRole("button", { name: /Review and activate/ }).count()) > 0);
 
@@ -194,14 +223,48 @@ const connect = async (page) => {
 
   await page.screenshot({ path: join(shots, "e2e-desk.png"), fullPage: true });
 
-  await page.getByRole("button", { name: "Advanced builder" }).click();
-  await page.waitForTimeout(900);
-  check("manual builder is still reachable", (await page.locator("#build").count()) === 1);
+  await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page.waitForSelector("#build", { timeout: 20000 });
+  await page.waitForTimeout(1200);
   const builder = await page.locator("#build").innerText();
-  check("builder uses trader labels", /Most to risk here/i.test(builder) && /If it lands YES/i.test(builder));
-  check("builder keeps raw ids behind a disclosure", /Onchain details/i.test(builder) && !/bytes32/i.test(builder));
 
-  await page.getByRole("button", { name: "Onchain details" }).first().click();
+  // The five questions a trader needs answered, on screen, without docs.
+  const unanswered = [
+    ["what am I watching", /what are you watching/i],
+    ["what if YES", /if yes/i],
+    ["what if NO", /if no/i],
+    ["how much can I risk", /maximum total risk/i],
+    ["what happens after activating", /what will happen/i],
+    ["a plain preview sentence", /when .* settles, sequence buys/i],
+    ["an explicit activate control", /activate sequence/i],
+  ].filter(([, re]) => !re.test(builder)).map(([n]) => n);
+  check("builder answers the five trader questions", unanswered.length === 0, unanswered.join(" | "));
+
+  const builderJargon = [
+    ["Outcome 0/1", /outcome [01]/i],
+    ["bounded actions", /bounded action/i],
+    ["successor", /successor/i],
+    ["cap will bind", /cap will bind/i],
+    ["pricefeed question", /pricefeed test/i],
+    ["raw market id", /0x[0-9a-fA-F]{64}/],
+    ["pool address", /0x[0-9a-fA-F]{40}/],
+    ["vault", /vault/i],
+    ["notional", /notional/i],
+    ["arm/armed", /arm(ed|ing)?/i],
+  ].filter(([, re]) => re.test(builder)).map(([n]) => n);
+  check("builder carries no contract vocabulary", builderJargon.length === 0, builderJargon.join(", "));
+  check("builder keeps raw ids behind a disclosure", /Onchain details/i.test(builder));
+
+  // One amount, shown the same everywhere.
+  const perTrade = await page.getByLabel("Amount per trade").inputValue();
+  const branchText = (await page.locator(".branch-row").allInnerTexts()).join(" ");
+  check("per-trade amount matches both branches", branchText.includes(`$${Number(perTrade).toLocaleString()}`), `input $${perTrade}`);
+
+  // Market names must read like markets, not like protocol records.
+  const firstMarket = await page.locator("select[aria-label='Market to watch'] option").nth(1).innerText();
+  check("markets are named the way traders name them", /^(BTC|ETH) \d+[smhd]/.test(firstMarket.trim()), firstMarket.trim());
+
+  await page.getByRole("button", { name: "Onchain details", exact: true }).first().click();
   await page.waitForTimeout(1200);
   const details = await page.locator("#how-it-works").innerText();
   check("onchain details surface exposes the raw record", /AnswerDelivered|0xA9A9AA93/i.test(details));
@@ -219,7 +282,7 @@ const connect = async (page) => {
   let overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check("landing has no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);
 
-  await connect(page);
+  await connect(page, { land: "home" });
   await page.waitForSelector(".risk-summary", { timeout: 45000 });
   overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check("desk has no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);

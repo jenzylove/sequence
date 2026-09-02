@@ -36,19 +36,34 @@ export function emptyStrategy() {
   return { name: "Untitled sequence", bankroll: 10000000n, maxOutstanding: 5000000n, steps: [] };
 }
 
-// Seed from real open markets: step N watches market N and places into N+1,
-// which is exactly the rolling pattern the product is built for.
+// Seed from real open markets: chain consecutive windows of the SAME market,
+// so a step watching BTC 15m trades into the next BTC 15m rather than into
+// whatever happened to be next in the list.
 export function seedFromMarkets(markets) {
   const strat = emptyStrategy();
   if (!markets || markets.length < 2) return strat;
-  const byAsset = {};
-  for (const m of markets) (byAsset[m.asset] ||= []).push(m);
-  const chain = Object.values(byAsset).sort((a, b) => b.length - a.length)[0] || markets;
-  strat.steps = [
-    makeStep(1, { triggerMarket: chain[0], successorMarket: chain[1] || markets[1] }),
-    makeStep(2, { triggerMarket: chain[1] || markets[1], successorMarket: chain[2] || markets[0] }),
-  ];
-  strat.name = `${chain[0].asset || "Rolling"} rolling sequence`;
+
+  // Group by the actual series a trader thinks in: asset plus window length.
+  const series = {};
+  for (const m of markets) {
+    if (!m.asset || !m.intervalSec || !m.pool) continue;
+    (series[`${m.asset}-${m.intervalSec}`] ||= []).push(m);
+  }
+  for (const list of Object.values(series)) list.sort((a, b) => (a.expiry || 0) - (b.expiry || 0));
+
+  // Prefer a series with enough future windows to chain, and a sane cadence:
+  // long enough that a trader can react, short enough to demo.
+  const usable = Object.entries(series)
+    .filter(([, list]) => list.length >= 2)
+    .sort((a, b) => {
+      const pref = (s) => Math.abs((s.split("-")[1] | 0) - 900);
+      return pref(a[0]) - pref(b[0]);
+    });
+  const chain = usable[0]?.[1];
+  if (!chain) return strat;
+
+  strat.steps = [makeStep(1, { triggerMarket: chain[0], successorMarket: chain[1] })];
+  strat.name = `${chain[0].asset} rolling sequence`;
   return strat;
 }
 
@@ -97,10 +112,10 @@ export function notices(strategy) {
   const out = [];
   const planned = strategy.steps.reduce((sum, s) => sum + notionalOf(s), 0n);
   if (planned > strategy.maxOutstanding) {
-    out.push(`If every step fires, the plan commits ${money(planned)} against a ${money(strategy.maxOutstanding)} vault cap. The vault will skip the steps that would cross it.`);
+    out.push(`If every trade fires it would commit ${money(planned)}, past your ${money(strategy.maxOutstanding)} limit. Sequence will stand down the trades that would cross it.`);
   }
   if (strategy.maxOutstanding > 0n && planned === 0n) {
-    out.push("No step commits anything yet; set a price and size.");
+    out.push("No trade is sized yet. Set an amount per trade.");
   }
   return out;
 }

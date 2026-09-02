@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { countdown, marketHeadline, asOdds } from "../lib/language.js";
+import { settlePhrase, marketName, asOdds } from "../lib/language.js";
 
 // Live market context, kept deliberately thin: the price the market is trading
 // at, when the next window settles, and what the book currently implies. All of
@@ -48,9 +48,9 @@ export default function MarketContext({ markets }) {
             </div>
             {market ? (
               <>
-                <div className="mt-2 text-[10px] leading-[1.5] text-[#7f7984]">{marketHeadline(market)}</div>
+                <div className="mt-2 text-[10px] leading-[1.5] text-[#7f7984]">{marketName(market)}</div>
                 <div className="mt-3 flex items-center justify-between">
-                  <span className="text-[9px] font-semibold uppercase tracking-[.1em] text-[#a19ca5]">settles {countdown(market.expiry)}</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-[.1em] text-[#a19ca5]">{settlePhrase(market.expiry)}</span>
                   {odds !== null
                     ? <span className="odds-pill">{odds}% yes</span>
                     : <span className="text-[9px] text-[#b3aebb]">no trades yet</span>}

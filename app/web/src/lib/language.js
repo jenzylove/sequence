@@ -46,15 +46,58 @@ export const ORDER_TYPE_COPY = {
 
 export const SIDE_COPY = { 0: "Buy YES", 1: "Sell YES", 2: "Buy NO", 3: "Sell NO" };
 
-// A market's question, shortened to something scannable.
-export function marketHeadline(market) {
+// How long a market's window runs, said the way a trader says it.
+export function intervalLabel(seconds) {
+  if (!seconds) return "";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
+  return `${Math.round(seconds / 86400)}d`;
+}
+
+// The market's name: "BTC 15m". This is what a trader calls it, and it is what
+// the primary interface uses everywhere.
+export function marketName(market) {
   if (!market) return "a market";
   const asset = market.asset || "Market";
+  const every = intervalLabel(market.intervalSec);
+  return every ? `${asset} ${every}` : asset;
+}
+
+// The question the market actually settles, in plain words. The indexer's own
+// text carries protocol noise ("Pricefeed test: will BTC/USDC's price be at or
+// above 77013.10 at unix time ..."), which is never shown to a trader.
+export function marketQuestion(market) {
+  if (!market) return "";
+  const asset = market.asset || "the market";
   const q = market.question || "";
-  if (/closes at or above its opening price/i.test(q)) return `${asset} closes up`;
+  if (/closes at or above its opening price/i.test(q)) {
+    return `Does ${asset} close higher than it opened?`;
+  }
   const strike = q.match(/at or above ([\d,.]+)/i);
-  if (strike) return `${asset} above ${Number(strike[1].replace(/,/g, "")).toLocaleString()}`;
-  return `${asset} market`;
+  if (strike) {
+    const level = Number(strike[1].replace(/,/g, ""));
+    return `Is ${asset} above $${level.toLocaleString(undefined, { maximumFractionDigits: 2 })}?`;
+  }
+  return `How does ${asset} settle?`;
+}
+
+// A few words distinguishing two windows of the same name, for pickers where
+// "ETH 5m" would otherwise appear twice.
+export function marketShortAsk(market) {
+  const q = market?.question || "";
+  if (/closes at or above its opening price/i.test(q)) return "closes higher than open";
+  const strike = q.match(/at or above ([\d,.]+)/i);
+  if (strike) {
+    const level = Number(strike[1].replace(/,/g, ""));
+    return `above $${level.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  }
+  return "";
+}
+
+// Kept for compact contexts: the market name plus what it asks.
+export function marketHeadline(market) {
+  return marketName(market);
 }
 
 // "in 3m 20s" / "settling now" / "settled 4m ago"
@@ -69,17 +112,51 @@ export function countdown(unixSeconds, now = Date.now()) {
   return delta > 0 ? `in ${span}` : `${span} ago`;
 }
 
+// "settling now" / "settles in 2m 9s" / "settled 4m ago" - reads on its own,
+// so callers never have to prepend a verb and end up with "settles settling now".
+export function settlePhrase(unixSeconds, now = Date.now()) {
+  if (!unixSeconds) return "no set time";
+  const delta = unixSeconds * 1000 - now;
+  if (Math.abs(delta) < 20000) return "settling now";
+  return delta > 0 ? `settles ${countdown(unixSeconds, now)}` : `settled ${countdown(unixSeconds, now)}`;
+}
+
 export const money = (raw, decimals = 6) =>
   "$" + (Number(raw) / 10 ** decimals).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 // Binary market prices are quoted 0-1 in collateral terms; traders read them as odds.
 export const asOdds = (raw) => (raw === null || raw === undefined ? null : Math.round((Number(raw) / 1e6) * 100));
 
+// What each side of a settlement does. The account always acts on a clean
+// result: one outcome buys YES, the other buys NO. Which way round is the
+// trader's choice, and this is the single place that mapping is described.
+export function branchActions(step, successorMarket) {
+  const next = marketName(successorMarket) || step.successorLabel || "the next market";
+  const size = money(step.price * step.quantity);
+  const yesSide = step.buyYesOnWin0 ? "YES" : "NO";
+  const noSide = step.buyYesOnWin0 ? "NO" : "YES";
+  return {
+    yes: { side: yesSide, text: `Buy ${yesSide} in the next ${next}`, verb: `buys ${yesSide} in the next ${next}`, size },
+    no: { side: noSide, text: `Buy ${noSide} in the next ${next}`, verb: `buys ${noSide} in the next ${next}`, size },
+  };
+}
+
 // One sentence describing what a whole step will do, in trader language.
 export function describeStep(step, { triggerMarket, successorMarket } = {}) {
-  const watch = marketHeadline(triggerMarket) || step.triggerLabel || "your chosen market";
-  const then = marketHeadline(successorMarket) || step.successorLabel || "the next market";
-  const yes = step.buyYesOnWin0 ? "YES" : "NO";
-  const no = step.buyYesOnWin0 ? "NO" : "YES";
-  return `When ${watch} settles: if it lands YES, buy ${yes} on ${then}. If it lands NO, buy ${no} instead. Either way you risk at most ${money(step.notionalCap)}.`;
+  const watch = marketName(triggerMarket) || step.triggerLabel || "your chosen market";
+  const { yes, no } = branchActions(step, successorMarket);
+  return `When ${watch} settles: if it closes up, Sequence ${yes.verb} for ${yes.size}. If it closes down, it ${no.verb} for ${no.size}. Either way it risks at most ${money(step.notionalCap)} on that trade.`;
+}
+
+// The whole plan in one plain sentence, for the moment before activating.
+export function describePlan(strategy, markets = []) {
+  if (!strategy?.steps?.length) return "";
+  const find = (id) => markets.find((m) => m.marketId === id);
+  const first = strategy.steps[0];
+  const watch = marketName(find(first.triggerMarketId)) || "your market";
+  const { yes, no } = branchActions(first, find(first.successorMarketId));
+  const more = strategy.steps.length > 1
+    ? ` It then keeps rolling for ${strategy.steps.length - 1} more settlement${strategy.steps.length > 2 ? "s" : ""}.`
+    : " It stops after that one trade.";
+  return `When ${watch} settles, Sequence ${yes.verb} for ${yes.size} if it closes up, or ${no.verb} for ${no.size} if it closes down.${more} You can never have more than ${money(strategy.maxOutstanding)} at risk at once.`;
 }

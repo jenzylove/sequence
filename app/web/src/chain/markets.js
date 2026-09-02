@@ -35,6 +35,7 @@ const MARKET_FIELDS = `
   lastPrice
   tradeCount
   cumulativeQuoteVolume
+  intervalSec
 `;
 
 function shape(row) {
@@ -57,6 +58,7 @@ function shape(row) {
     lastPrice: row.lastPrice ? BigInt(row.lastPrice) : null,
     tradeCount: row.tradeCount ? Number(row.tradeCount) : 0,
     volume: row.cumulativeQuoteVolume ? BigInt(row.cumulativeQuoteVolume) : 0n,
+    intervalSec: row.intervalSec ? Number(row.intervalSec) : null,
   };
 }
 

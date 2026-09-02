@@ -3,21 +3,21 @@ export default function Hero({ onBuild, onOperations }) {
     <main className="relative overflow-hidden">
       <div className="mx-auto grid min-h-[670px] max-w-[1280px] grid-cols-1 items-center gap-12 px-7 pb-20 pt-12 sm:px-12 lg:grid-cols-[0.82fr_1.18fr] lg:px-16 lg:pb-24 lg:pt-10">
         <div className="relative z-10 max-w-[510px]">
-          <p className="mb-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#76717d]">Outcome-driven execution</p>
+          <p className="mb-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#76717d]">Automated follow-on trading</p>
           <h1 className="text-[52px] font-extrabold leading-[0.98] tracking-[-0.065em] text-[#09090b] sm:text-[68px] lg:text-[74px]">
             Plan the next<br />move now.
           </h1>
           <p className="mt-7 max-w-[390px] text-[14px] leading-[1.7] text-[#6c6871]">
-            Sequence turns a market’s settlement into your next bounded action—so the strategy continues exactly as planned, without waiting on you.
+            The moment a market settles, Sequence places your next trade for you. You set the rules and the most you can lose, once.
           </p>
           <div className="mt-9 flex items-center gap-5">
             <button onClick={onBuild} className="rounded-full bg-[#09090b] px-7 py-3.5 text-[12px] font-semibold text-white shadow-[0_14px_30px_-16px_rgba(0,0,0,.65)] transition hover:-translate-y-0.5 hover:bg-[#29272d]">
               Build your sequence
             </button>
-            <button onClick={onOperations} className="hidden text-left text-[11px] leading-4 text-[#918d96] transition hover:text-[#28252c] sm:block">Simulate first.<br />See the live vault.</button>
+            <button onClick={onOperations} className="hidden text-left text-[11px] leading-4 text-[#918d96] transition hover:text-[#28252c] sm:block">See it in plain English<br />before anything goes live.</button>
           </div>
           <p className="mt-12 font-mono text-[10px] uppercase tracking-[0.12em] text-[#9d99a1]">
-            DreamDEX → Somnia Reactivity → bounded order
+            Settles → decides → trades
           </p>
         </div>
 
@@ -44,7 +44,7 @@ export default function Hero({ onBuild, onOperations }) {
             </div>
             <div className="mt-5 border-t border-[#efedf1] pt-4">
               <div className="text-[12px] font-semibold text-[#242128]">BTC above $61,500?</div>
-              <div className="mt-2 flex justify-between font-mono text-[9px] text-[#928d97]"><span>DreamDEX</span><span>13:45 UTC</span></div>
+              <div className="mt-2 flex justify-between font-mono text-[9px] text-[#928d97]"><span>BTC 15m</span><span>13:45 UTC</span></div>
             </div>
           </article>
 
@@ -60,15 +60,15 @@ export default function Hero({ onBuild, onOperations }) {
           <article className="float-card hero-flow-card card-order absolute bottom-[9%] left-[18%] z-[5] w-[330px] border-l-[4px] border-[#8a70e8] p-5">
             <div className="flex items-start justify-between">
               <div>
-                <div className="eyebrow">Step 02 · Armed</div>
+                <div className="eyebrow">Step 02 · Ready</div>
                 <h3 className="card-title">Place the next order</h3>
               </div>
-              <span className="order-state rounded-full bg-[#f0ecff] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#7056c9]"><span className="armed-label">Armed</span><span className="active-label">Active</span></span>
+              <span className="order-state rounded-full bg-[#f0ecff] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#7056c9]"><span className="armed-label">Ready</span><span className="active-label">Active</span></span>
             </div>
             <div className="mt-5 grid grid-cols-3 gap-2 border-t border-[#efedf1] pt-4">
               <Metric label="Side" value="Buy YES" />
               <Metric label="Size" value="$3.00" />
-              <Metric label="Cap" value="$4.00" />
+              <Metric label="Max risk" value="$4.00" />
             </div>
           </article>
         </div>

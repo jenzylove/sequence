@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { shortAccount } from "../hooks/useWallet.js";
 
-export default function WalletDialog({ open, wallet, onClose }) {
+export default function WalletDialog({ open, wallet, reason = null, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (event) => event.key === "Escape" && onClose();
@@ -17,7 +17,7 @@ export default function WalletDialog({ open, wallet, onClose }) {
           <div>
             <div className="micro-label">Wallet</div>
             <h2 id="wallet-title" className="mt-2 text-[24px] font-extrabold tracking-[-.04em] text-[#151318]">Choose a wallet</h2>
-            <p className="mt-2 text-[11px] leading-5 text-[#817b86]">Sequence only requests account access. You approve every onchain action in your wallet.</p>
+            <p className="mt-2 text-[11px] leading-5 text-[#817b86]">{reason || "Sequence only asks for your address. You approve every action in your wallet."}</p>
           </div>
           <button autoFocus onClick={onClose} className="icon-button" aria-label="Close wallet selector">×</button>
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Nav from "./components/Nav.jsx";
 import Hero from "./components/Hero.jsx";
+import HowItWorks from "./components/HowItWorks.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import Builder from "./components/Builder.jsx";
 import Operations from "./components/Operations.jsx";
@@ -10,35 +11,56 @@ import { useWallet } from "./hooks/useWallet.js";
 import { useMarkets } from "./hooks/useMarkets.js";
 import { useVault } from "./hooks/useVault.js";
 
-// Two surfaces. Before connecting, the landing explains the product and lets a
-// visitor build and simulate for free. After connecting, the desk takes over:
-// what is running, what it waits on, what it costs. The manual builder and the
-// raw onchain view stay one click away as the advanced surfaces.
+// Two worlds, kept strictly apart.
+//
+// Disconnected is a landing page and nothing else: what the product does, how it
+// works, and one way in. No account state, no balances, no contract addresses.
+//
+// Connected is the product. "Build your sequence" goes straight to the builder
+// rather than parking the user on a dashboard first; the home view with their
+// drafts and live sequences is one click away in the nav.
 export default function App() {
   const [walletOpen, setWalletOpen] = useState(false);
-  const [showBuilder, setShowBuilder] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  const [walletReason, setWalletReason] = useState(null);
+  const [view, setView] = useState("home");
   const [editing, setEditing] = useState(null);
+  const [intent, setIntent] = useState(null);
 
   const wallet = useWallet();
   const markets = useMarkets();
   const vault = useVault();
   const connected = wallet.connected;
 
-  const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-  const openBuilder = (draft = null) => {
+  const askToConnect = (reason) => { setWalletReason(reason); setWalletOpen(true); };
+
+  // "Build your sequence" is the product's front door. Disconnected, it asks for
+  // a wallet and remembers why, so connecting drops the user straight into the
+  // builder instead of back where they started.
+  const startBuilding = (draft = null) => {
     setEditing(draft);
-    setShowBuilder(true);
-    window.setTimeout(() => scrollTo("build"), 60);
-  };
-  const openDetails = () => {
-    setShowDetails(true);
-    window.setTimeout(() => scrollTo("onchain"), 60);
+    if (!connected) {
+      setIntent("build");
+      askToConnect("Connect a wallet to build a sequence. You approve every rule yourself, and nothing moves until you do.");
+      return;
+    }
+    setView("build");
+    window.setTimeout(() => document.getElementById("build")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
 
-  // A visitor who has not connected still gets the builder, so they can try the
-  // product before committing anything.
-  useEffect(() => { if (!connected) setShowBuilder(true); }, [connected]);
+  useEffect(() => {
+    if (!connected) { setView("home"); return; }
+    if (intent === "build") {
+      setIntent(null);
+      setView("build");
+      window.setTimeout(() => document.getElementById("build")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+    }
+  }, [connected, intent]);
+
+  const go = (next) => {
+    setView(next);
+    const anchor = next === "build" ? "build" : next === "details" ? "onchain" : "dashboard";
+    window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  };
 
   return (
     <div id="top" className="min-h-screen bg-paper font-sans text-ink">
@@ -46,57 +68,69 @@ export default function App() {
         <Nav
           connected={connected}
           wallet={wallet}
-          onWallet={() => setWalletOpen(true)}
-          onDashboard={() => scrollTo(connected ? "dashboard" : "build")}
-          onBuilder={() => openBuilder()}
-          onDetails={openDetails}
+          view={view}
+          onWallet={() => askToConnect(null)}
+          onHome={() => (connected ? go("home") : document.getElementById("top")?.scrollIntoView({ behavior: "smooth" }))}
+          onBuild={() => startBuilding()}
+          onDetails={() => go("details")}
         />
-        {!connected && <Hero onBuild={() => scrollTo("build")} onOperations={() => setWalletOpen(true)} />}
+        {!connected && (
+          <Hero
+            onBuild={() => startBuilding()}
+            onOperations={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}
+          />
+        )}
       </div>
 
-      {connected && (
+      {/* Public: explanation only. No account state reaches this surface. */}
+      {!connected && <HowItWorks onStart={() => startBuilding()} />}
+
+      {connected && view === "home" && (
         <Dashboard
           markets={markets}
           vault={vault}
           wallet={wallet}
-          onOpenBuilder={() => openBuilder()}
-          onEditDraft={(draft) => openBuilder(draft)}
-          onOpenDetails={openDetails}
+          onOpenBuilder={() => startBuilding()}
+          onEditDraft={(draft) => startBuilding(draft)}
+          onOpenDetails={() => go("details")}
         />
       )}
 
-      {showBuilder && (
+      {connected && view === "build" && (
         <Builder
           markets={markets}
           vault={vault}
           wallet={wallet}
           initialDraft={editing}
-          advanced={connected}
-          onWallet={() => setWalletOpen(true)}
-          onClose={connected ? () => setShowBuilder(false) : null}
+          onWallet={() => askToConnect(null)}
+          onClose={() => go("home")}
+          onActivated={() => go("home")}
         />
       )}
 
-      {connected && !showDetails && (
-        <div className="details-shell">
-          <div className="mx-auto max-w-[1280px] px-7 py-10 text-center sm:px-12 lg:px-16">
-            <button onClick={openDetails} className="details-toggle">Onchain details and proof →</button>
-          </div>
-        </div>
-      )}
-
-      {(showDetails || !connected) && (
+      {connected && view === "details" && (
         <Operations
           wallet={wallet}
           vault={vault}
           markets={markets}
-          onWallet={() => setWalletOpen(true)}
-          onBuild={() => openBuilder()}
+          onWallet={() => askToConnect(null)}
+          onBuild={() => startBuilding()}
+          onClose={() => go("home")}
         />
       )}
 
-      <Closing onBuild={() => (connected ? scrollTo("dashboard") : openBuilder())} onWallet={() => setWalletOpen(true)} connected={connected} />
-      <WalletDialog open={walletOpen} wallet={wallet} onClose={() => setWalletOpen(false)} />
+      <Closing
+        onBuild={() => startBuilding()}
+        onWallet={() => askToConnect(null)}
+        connected={connected}
+      />
+
+      <WalletDialog
+        open={walletOpen}
+        wallet={wallet}
+        reason={walletReason}
+        onClose={() => { setWalletOpen(false); setWalletReason(null); }}
+      />
     </div>
   );
 }

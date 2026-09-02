@@ -9,7 +9,8 @@
     "gen:abi": "node scripts/gen-abi.mjs",
     "verify": "node scripts/verify-arm.mjs",
     "e2e": "npm run build && node scripts/e2e.mjs",
-    "verify:clone": "node scripts/verify-clean-clone.mjs"
+    "verify:clone": "node scripts/verify-clean-clone.mjs",
+    "journey": "node scripts/journey.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

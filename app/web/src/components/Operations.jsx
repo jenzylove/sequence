@@ -10,7 +10,7 @@ const TERMINAL = ["EXECUTED", "SKIPPED", "EXPIRED", "CANCELLED"];
 // Every value rendered here is a contract read or a decoded contract event.
 // Nothing on this screen is a placeholder; when the chain has nothing to show,
 // the empty state says so rather than inventing a sequence.
-export default function Operations({ wallet, vault, markets, onWallet, onBuild }) {
+export default function Operations({ wallet, vault, markets, onWallet, onBuild, onClose = null }) {
   const [view, setView] = useState("active");
   const [busy, setBusy] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -46,7 +46,7 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild }
             <span className="section-tag bg-[#ff9b7f]">Onchain details</span>
             <h2 className="mt-5 max-w-[600px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Check the receipts.<br />Every step is public.</h2>
           </div>
-          <p className="max-w-[480px] text-[14px] leading-[1.75] text-[#65616b] lg:justify-self-end">This is the raw record: the contract that holds your funds, the exact rules it is enforcing, and every transition it has published, each with a transaction you can open yourself. You never need this page to trade, but it is always here.</p>
+          <div className="max-w-[480px] lg:justify-self-end"><p className="text-[14px] leading-[1.75] text-[#65616b]">This is the raw record: the contract that holds your funds, the exact rules it is enforcing, and every transition it has published, each with a transaction you can open yourself. You never need this page to trade, but it is always here.</p>{onClose && <button onClick={onClose} className="mt-5 text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Back to your sequences</button>}</div>
         </div>
 
         <div className="wallet-strip mt-16">

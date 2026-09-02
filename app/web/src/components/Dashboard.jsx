@@ -73,10 +73,11 @@ export default function Dashboard({ markets, vault, wallet, onOpenBuilder, onEdi
       <div className="mx-auto max-w-[1280px] px-7 py-16 sm:px-12 lg:px-16 lg:py-20">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
-            <span className="section-tag bg-[#8b72e8]">Your desk</span>
+            <span className="section-tag bg-[#8b72e8]">Your sequences</span>
             <h2 className="mt-5 text-[36px] font-extrabold leading-[1.05] tracking-[-0.055em] text-[#0b0a0e] sm:text-[44px]">
               {active.length > 0 ? "Running without you." : "Set the next move."}
             </h2>
+            <button onClick={onOpenBuilder} className="soft-button mt-6 bg-[#111014] px-6 py-3 text-white">New sequence</button>
           </div>
           {state && (
             <div className="risk-summary">

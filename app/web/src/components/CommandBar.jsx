@@ -51,7 +51,7 @@ export default function CommandBar({ markets, vault, onReview, onOpenBuilder }) 
           <div className="micro-label">New sequence</div>
           <h3 className="mt-2 text-[22px] font-extrabold tracking-[-.04em] text-[#151318]">What should happen next?</h3>
         </div>
-        <button onClick={onOpenBuilder} className="text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Build it manually instead</button>
+        <button onClick={onOpenBuilder} className="text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Build it step by step</button>
       </div>
 
       <form
@@ -61,7 +61,7 @@ export default function CommandBar({ markets, vault, onReview, onOpenBuilder }) 
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Roll BTC three times, $2 a trade, $5 total"
+          placeholder="Roll BTC 15m three times, $2 a trade, $5 total"
           aria-label="Describe the sequence you want"
         />
         <button type="submit" className="soft-button bg-[#111014] text-white">Read it back</button>

@@ -28,7 +28,7 @@ function Footer({ onBuild }) {
           <p className="mt-5 max-w-[280px] text-[10px] leading-5 text-[#8e8993]">Your next trade, placed the moment the market settles. Never more than the limits you set.</p>
           <div className="mt-5 inline-flex items-center gap-2 text-[9px] font-semibold text-[#77717d]"><span className="h-1.5 w-1.5 rounded-full bg-[#55b58a]" />Shannon testnet</div>
         </div>
-        <FooterGroup title="Product"><button onClick={onBuild}>Your desk</button><a href="#build">Build by hand</a><a href="#proof">Receipts</a></FooterGroup>
+        <FooterGroup title="Product"><button onClick={onBuild}>Build a sequence</button><a href="#how-it-works">How it works</a></FooterGroup>
         <FooterGroup title="Technical"><a href="https://github.com/jenzylove/sequence/blob/main/docs/VERIFIED.md" target="_blank" rel="noreferrer">How it is wired ↗</a><a href="https://github.com/jenzylove/sequence" target="_blank" rel="noreferrer">GitHub ↗</a><a href="#top">Back to top</a></FooterGroup>
       </div>
       <div className="mx-auto flex max-w-[1152px] flex-wrap justify-between gap-3 border-t border-[#2b2930] px-7 py-5 text-[8px] uppercase tracking-[.12em] text-[#6e6973] sm:px-12"><span>Sequence · 2026</span><span>Decide once · settles · trades</span></div>
