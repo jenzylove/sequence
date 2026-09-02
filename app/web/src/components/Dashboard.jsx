@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import MarketContext from "./MarketContext.jsx";
 import CommandBar from "./CommandBar.jsx";
 import ActivateDialog from "./ActivateDialog.jsx";
+import LimitDialog from "./LimitDialog.jsx";
 import { statusCopy, bucketFor, money, countdown, marketHeadline } from "../lib/language.js";
 import { explainEvent } from "../lib/command.js";
 import { loadDrafts, upsertDraft, removeDraft } from "../lib/store.js";
@@ -21,6 +22,7 @@ export default function Dashboard({ markets, vault, wallet, onOpenBuilder, onEdi
   const [tab, setTab] = useState("active");
   const [drafts, setDrafts] = useState(() => loadDrafts());
   const [pending, setPending] = useState(null);
+  const [limitOpen, setLimitOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const [, tick] = useState(0);
 
@@ -83,10 +85,13 @@ export default function Dashboard({ markets, vault, wallet, onOpenBuilder, onEdi
                 <div className="mt-1.5 text-[20px] font-extrabold tracking-[-.04em] text-[#161419]">{money(state.outstanding)}</div>
               </div>
               <div className="h-8 w-px bg-[#e5e1e8]" />
-              <div>
+              <button onClick={() => setLimitOpen(true)} className="group text-left" aria-label="Change your risk limit">
                 <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Your limit</div>
-                <div className="mt-1.5 text-[20px] font-extrabold tracking-[-.04em] text-[#161419]">{money(state.maxOutstanding)}</div>
-              </div>
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-[20px] font-extrabold tracking-[-.04em] text-[#161419]">{money(state.maxOutstanding)}</span>
+                  <span className="text-[9px] font-semibold text-[#a19ca5] transition group-hover:text-[#6f58c2]">change</span>
+                </div>
+              </button>
               <div className="h-8 w-px bg-[#e5e1e8]" />
               <div>
                 <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Still free</div>
@@ -241,6 +246,8 @@ export default function Dashboard({ markets, vault, wallet, onOpenBuilder, onEdi
           </div>
         </div>
       </div>
+
+      {limitOpen && <LimitDialog vault={vault} wallet={wallet} onClose={() => setLimitOpen(false)} />}
 
       {pending && (
         <ActivateDialog

@@ -21,8 +21,12 @@ export default function Builder({ markets, vault, wallet, onWallet, initialDraft
   // Seed once from real open markets if nothing is stored yet.
   useEffect(() => {
     if (strategy || markets.status !== "ready" || markets.open.length < 2) return;
-    setStrategy(seedFromMarkets(markets.open));
-  }, [strategy, markets.status, markets.open]);
+    const seeded = seedFromMarkets(markets.open);
+    // Funds available is a real balance, not a guess.
+    if (vault.state?.bankroll > 0n) seeded.bankroll = vault.state.bankroll;
+    if (vault.state?.maxOutstanding > 0n) seeded.maxOutstanding = vault.state.maxOutstanding;
+    setStrategy(seeded);
+  }, [strategy, markets.status, markets.open, vault.state]);
 
   useEffect(() => { if (initialDraft) setStrategy(initialDraft); }, [initialDraft]);
   useEffect(() => {

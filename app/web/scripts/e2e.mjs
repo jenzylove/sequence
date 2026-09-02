@@ -131,6 +131,14 @@ const connect = async (page) => {
   check("desk offers Drafts / Live / Finished", /Drafts/.test(dash) && /Live/.test(dash) && /Finished/.test(dash));
   check("desk has a clear new-sequence entry point", /What should happen next\?/i.test(dash));
 
+  // The risk limit is a real onchain setting, reachable from the headline number.
+  await page.getByLabel("Change your risk limit").click();
+  await page.waitForTimeout(400);
+  const limit = await page.locator("[role=dialog]").innerText();
+  check("risk limit is explained and changeable", /The most you can have at risk/i.test(limit) && /Funds in your account/i.test(limit));
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+
   const strip = await page.locator(".market-strip").innerText();
   check("live market context is present", /BTC|ETH/.test(strip), strip.split("\n").slice(0, 3).join(" / "));
   check("settlement countdown is shown", /settles in|settling now/i.test(strip));

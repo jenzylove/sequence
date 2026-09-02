@@ -35,6 +35,7 @@ export default function CommandBar({ markets, vault, onReview, onOpenBuilder }) 
     const parsed = parseCommand(input, {
       open: markets.open,
       bankroll: vault.state?.bankroll ?? 200000000n,
+      accountLimit: vault.state?.maxOutstanding ?? null,
     });
     setResult(parsed);
   };

@@ -32,6 +32,26 @@ without putting the bankroll at risk:
 - only the Somnia Reactivity precompile can drive execution
 - owner-only arming, pause, step cancellation, and fund recovery
 
+## Using it
+
+Connect a wallet and you land on your desk: what is at risk, your limit, what is
+still free, live BTC and ETH context with settlement countdowns, and your
+sequences split into Drafts, Live and Finished.
+
+To create one, describe it:
+
+> roll BTC three times, $2 a trade, $5 total
+
+Sequence reads it back as plain rules, both outcomes spelled out, with the worst
+case stated before anything is signed. The translation is deterministic and
+grounded in markets that are actually open: it refuses an unknown market rather
+than inventing one, and it never forecasts price. Activating takes one wallet
+approval per step. Each step then watches its own market and runs on its own.
+
+The manual builder is still there as the advanced surface, and every raw
+identifier, pool address, event name and transaction hash lives behind
+"Onchain details".
+
 ## Repository
 
 | Path | What it is |
@@ -41,6 +61,8 @@ without putting the bankroll at risk:
 | `src/IDreamDEX.sol`, `src/Verified.sol` | Interfaces and constants derived from the markets SDK |
 | `test/` | 26 Foundry tests covering branches, caps, idempotency and access |
 | `app/planner/` | Off-chain strategy model, simulation, and vault client |
+| `app/web/src/lib/` | Trader vocabulary, the command parser, draft storage |
+| `app/web/src/components/` | Desk, command surface, builder, onchain details |
 | `app/web/` | The product frontend |
 | `docs/VERIFIED.md` | Provenance for every interface fact and address |
 
@@ -81,7 +103,11 @@ Live and verified:
 - vault reads, step reads and event decoding in the browser
 - the `armStep` path simulated successfully from the real vault owner, and correctly
   rejected for a non-owner
-- 26/26 contract tests, 6/6 planner tests against live chain, 21/21 browser checks
+- the account is subscribed to market results (subscription `15531756`) and
+  funded, so settlements now reach it automatically
+- 26/26 contract tests, 6/6 planner tests against live chain, 39/39 browser
+  checks including comprehension checks that fail the build if contract
+  vocabulary leaks into the primary interface
 
 Not yet live, and labelled as such in the product:
 
