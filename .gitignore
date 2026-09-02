@@ -14,3 +14,11 @@ node_modules/
 app/node_modules/
 app/web/node_modules/
 app/web/dist/
+qa/
+
+# Local design/QA capture artefacts. Not used by the app or the submission.
+*.mp4
+*.mov
+/sequence-ui-checkpoint-*.png
+/sequence-motion-checkpoint-*.png
+/*-contact-sheet.png

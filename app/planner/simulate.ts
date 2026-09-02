@@ -3,7 +3,8 @@ import { winner, kindFor } from "./resolve.js";
 
 export interface Resolution {
   marketId: string;
-  questionId: number;
+  // string-safe: oracle question ids exceed Number precision
+  questionId: number | string;
   payoutNumerators: bigint[];
   voided: boolean;
 }

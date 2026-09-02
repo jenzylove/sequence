@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "gen:abi": "node scripts/gen-abi.mjs",
+    "verify": "node scripts/verify-arm.mjs",
+    "e2e": "npm run build && node scripts/e2e.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -15,6 +18,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
+    "playwright": "^1.62.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "vite": "^5.4.8"
