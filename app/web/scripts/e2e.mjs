@@ -65,7 +65,7 @@ async function newPage(viewport, { owner } = {}) {
 // ---------------------------------------------------------------- pass 1
 {
   const { context, page } = await newPage({ width: 1440, height: 1000 });
-  await page.goto(base, { waitUntil: "networkidle" });
+  await page.goto(base, { waitUntil: "domcontentloaded" });
 
   check("landing renders the hero promise", (await page.getByRole("heading", { level: 1 }).innerText()).includes("Plan the next"));
 
@@ -122,7 +122,7 @@ async function newPage(viewport, { owner } = {}) {
 // ---------------------------------------------------------------- pass 2
 {
   const { context, page } = await newPage({ width: 1440, height: 1000 }, { owner: "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324" });
-  await page.goto(base, { waitUntil: "networkidle" });
+  await page.goto(base, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Connect wallet" }).first().click();
   await page.getByRole("button", { name: /Test harness wallet/ }).click();
   await page.waitForTimeout(500);
@@ -141,6 +141,13 @@ async function newPage(viewport, { owner } = {}) {
   const armBtn = await page.getByRole("button", { name: "Arm this step" }).count();
   check("owner sees a live arm control", armBtn > 0);
 
+  await page.locator("#how-it-works").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  const goLive = await page.locator("text=Make the vault reactive").count();
+  check("owner sees the go-live path", goLive > 0);
+  const stake = await page.locator("text=/Send 32 SOM/").count();
+  check("go-live surfaces the real subscription stake", stake > 0);
+
   await page.screenshot({ path: join(shots, "e2e-desktop-connected.png"), fullPage: true });
   await context.close();
 }
@@ -148,7 +155,7 @@ async function newPage(viewport, { owner } = {}) {
 // ---------------------------------------------------------------- pass 3
 {
   const { context, page } = await newPage({ width: 390, height: 844 });
-  await page.goto(base, { waitUntil: "networkidle" });
+  await page.goto(base, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check("no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);

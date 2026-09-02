@@ -29,12 +29,13 @@ export async function readVaultState(vault = SHANNON.vault) {
     client.readContract({ address: vault, abi: vaultAbi, functionName: "maxOutstandingNotional" }),
     client.readContract({ address: vault, abi: vaultAbi, functionName: "collateral" }),
   ]);
+  const native = await client.getBalance({ address: vault });
   let bankroll = null;
   try {
     bankroll = await client.readContract({ address: collateral, abi: erc20Abi, functionName: "balanceOf", args: [vault] });
   } catch { bankroll = null; }
   return {
-    vault, owner, paused, subscriptionId, outstanding, maxOutstanding, collateral, bankroll,
+    vault, owner, paused, subscriptionId, outstanding, maxOutstanding, collateral, bankroll, native,
     subscribed: subscriptionId !== 0n,
     readAt: Date.now(),
   };
@@ -154,5 +155,20 @@ export async function sendVaultTx({ provider, account, functionName, args = [], 
   return { hash, receipt, blockNumber: receipt.blockNumber, status: receipt.status };
 }
 
+// Fund the vault's own native balance. Somnia Reactivity charges the
+// subscription stake to the subscribing contract, so the vault must hold it.
+export async function fundVault({ provider, account, value, vault = SHANNON.vault }) {
+  const client = publicClient();
+  const hash = await walletClientFor(provider, account).sendTransaction({ to: vault, value });
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  return { hash, receipt, blockNumber: receipt.blockNumber, status: receipt.status };
+}
+
+export async function readNativeBalance(address) {
+  return publicClient().getBalance({ address });
+}
+
+export const subscribeAllMarkets = (opts) => sendVaultTx({ ...opts, functionName: "subscribeAllMarkets", args: [] });
+export const approvePool = (opts) => sendVaultTx({ ...opts, functionName: "approvePool", args: [opts.pool, opts.amount] });
 export const cancelStep = (opts) => sendVaultTx({ ...opts, functionName: "cancelStep", args: [opts.stepId] });
 export const setPaused = (opts) => sendVaultTx({ ...opts, functionName: "setPaused", args: [opts.paused] });

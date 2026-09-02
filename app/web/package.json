@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "gen:abi": "node scripts/gen-abi.mjs",
+    "verify": "node scripts/verify-arm.mjs",
+    "e2e": "npm run build && node scripts/e2e.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
