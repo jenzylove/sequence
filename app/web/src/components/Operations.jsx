@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { shortAccount } from "../hooks/useWallet.js";
 
 const timeline = [
   { time: "13:45:02", title: "Answer delivered", detail: "OracleHub emitted the verified market resolution signature.", label: "OracleHub", tone: "cyan" },
@@ -7,7 +8,7 @@ const timeline = [
   { time: "13:45:04", title: "Bounded order prepared", detail: "Buy YES · $3.00 notional · inside the $4.00 step cap.", label: "Vault", tone: "green" },
 ];
 
-export default function Operations({ walletConnected, onWallet }) {
+export default function Operations({ wallet, onWallet, onBuild }) {
   const [view, setView] = useState("active");
 
   return (
@@ -23,26 +24,26 @@ export default function Operations({ walletConnected, onWallet }) {
 
         <div className="wallet-strip mt-16">
           <div className="flex items-center gap-4">
-            <span className={`grid h-10 w-10 place-items-center rounded-full ${walletConnected ? "bg-[#e8f7ef]" : "bg-[#f1eef5]"}`}>
-              <span className={`h-2.5 w-2.5 rounded-full ${walletConnected ? "bg-[#55b58a]" : "bg-[#aaa4ae]"}`} />
+            <span className={`grid h-10 w-10 place-items-center rounded-full ${wallet.connected ? "bg-[#e8f7ef]" : "bg-[#f1eef5]"}`}>
+              <span className={`h-2.5 w-2.5 rounded-full ${wallet.connected ? "bg-[#55b58a]" : "bg-[#aaa4ae]"}`} />
             </span>
             <div>
-              <div className="text-[12px] font-bold text-[#242128]">{walletConnected ? "Wallet connected" : "Connect to arm this sequence"}</div>
-              <div className="mt-1 text-[10px] text-[#99949e]">{walletConnected ? "0x7A2E…C91F · Shannon testnet" : "Build and simulate without connecting. A wallet is only needed to fund and arm."}</div>
+              <div className="text-[12px] font-bold text-[#242128]">{wallet.connected ? `${wallet.walletName} connected` : "Connect to arm this sequence"}</div>
+              <div className="mt-1 text-[10px] text-[#99949e]">{wallet.connected ? `${shortAccount(wallet.account)} · ${wallet.onShannon ? "Shannon testnet" : `Chain ${parseInt(wallet.chainId, 16)}`}` : "Build and simulate without connecting. A wallet is only needed to fund and arm."}</div>
             </div>
           </div>
-          {walletConnected ? (
+          {wallet.connected ? (
             <div className="flex items-center gap-8">
-              <WalletMetric label="Available" value="$10.00 tUSDC" />
-              <WalletMetric label="Vault" value="$5.00 armed" />
-              <button onClick={onWallet} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#242128]">Disconnect</button>
+              <WalletMetric label="Account" value={shortAccount(wallet.account)} />
+              <WalletMetric label="Network" value={wallet.onShannon ? "Shannon" : "Switch required"} />
+              <button onClick={wallet.disconnect} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#242128]">Disconnect</button>
             </div>
           ) : <button onClick={onWallet} className="soft-button bg-[#111014] text-white">Connect wallet</button>}
         </div>
 
         <div className="mt-6 flex gap-7 border-b border-[#e5e1e8]">
-          <button onClick={() => setView("active")} className={`state-tab ${view === "active" ? "is-active" : ""}`}>Active sequence</button>
-          <button onClick={() => setView("history")} className={`state-tab ${view === "history" ? "is-active" : ""}`}>Execution proof</button>
+          <button onClick={() => { setView("active"); document.getElementById("active-sequence")?.scrollIntoView({ behavior: "smooth", block: "center" }); }} className={`state-tab ${view === "active" ? "is-active" : ""}`}>Active sequence</button>
+          <button onClick={() => { setView("history"); document.getElementById("proof")?.scrollIntoView({ behavior: "smooth", block: "center" }); }} className={`state-tab ${view === "history" ? "is-active" : ""}`}>Execution proof</button>
         </div>
 
         <div className="mt-10 grid gap-12 lg:grid-cols-[.9fr_1.1fr] lg:items-start">
@@ -51,7 +52,7 @@ export default function Operations({ walletConnected, onWallet }) {
             <div className="absolute bottom-10 right-3 h-32 w-48 bg-[#c6f3f7] [clip-path:polygon(12%_0,100%_16%,88%_100%,0_78%)]" />
             <svg className="absolute left-0 top-32 h-52 w-32" viewBox="0 0 130 210" fill="none" aria-hidden="true"><path d="M8 20c82 0 4 82 74 89 58 6 40 59 6 82" stroke="#39353d" strokeWidth="1"/><path d="m88 191-3-11m3 11 11-5" stroke="#39353d" strokeWidth="1"/></svg>
 
-            <article className="active-card relative z-[2] ml-auto max-w-[430px]">
+            <article id="active-sequence" className="active-card relative z-[2] ml-auto max-w-[430px]">
               <div className="flex items-center justify-between border-b border-[#ece9ef] px-7 py-5">
                 <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-[#55b58a] shadow-[0_0_0_5px_rgba(85,181,138,.12)]" /><span className="text-[11px] font-bold text-[#2a272e]">Sequence active</span></div>
                 <span className="font-mono text-[9px] text-[#a19ca5]">SEQ-02F9</span>
@@ -64,7 +65,7 @@ export default function Operations({ walletConnected, onWallet }) {
                   <div className="micro-label">Armed successor</div>
                   <div className="mt-3 flex items-start justify-between gap-5"><div><div className="text-[13px] font-bold text-[#28252c]">ETH · 02SEP 14:00</div><div className="mt-1.5 text-[10px] text-[#85808a]">If outcome 0 wins → Buy YES</div></div><span className="rounded-full bg-[#eeeafd] px-2.5 py-1 text-[8px] font-bold uppercase tracking-[.1em] text-[#7056c9]">Ready</span></div>
                 </div>
-                <div className="mt-7 flex items-center justify-between"><span className="text-[10px] text-[#99949e]">Armed 6 minutes ago</span><button className="text-[10px] font-bold text-[#2a272e]">Pause sequence</button></div>
+                <div className="mt-7 flex items-center justify-between"><span className="text-[10px] text-[#99949e]">Example state</span><button onClick={onBuild} className="text-[10px] font-bold text-[#2a272e]">Review in builder</button></div>
               </div>
             </article>
           </div>
@@ -87,7 +88,7 @@ export default function Operations({ walletConnected, onWallet }) {
                 </div>
               ))}
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#faf9fb] px-7 py-5"><span className="font-mono text-[9px] text-[#99949e]">AnswerDelivered(bytes32,uint256,uint256[])</span><button className="text-[9px] font-bold text-[#6f58c2]">View provenance ↗</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#faf9fb] px-7 py-5"><span className="font-mono text-[9px] text-[#99949e]">AnswerDelivered(uint256,bytes32,uint32,uint256[],bool)</span><a href="https://github.com/jenzylove/sequence/blob/ui/codex-sequence/docs/VERIFIED.md" target="_blank" rel="noreferrer" className="text-[9px] font-bold text-[#6f58c2]">View provenance ↗</a></div>
           </article>
         </div>
       </div>

@@ -70,7 +70,7 @@ export default function Builder() {
 
           <div className="grid lg:grid-cols-[300px_1fr]">
             <aside className="border-b border-[#ece9ef] bg-[#fbfbfc] p-6 lg:border-b-0 lg:border-r lg:p-8">
-              <div className="mb-6 flex items-center justify-between"><div><div className="micro-label">Sequence path</div><div className="mt-1 text-[11px] text-[#99949e]">{steps.length} bounded actions</div></div><button onClick={addStep} className="grid h-8 w-8 place-items-center rounded-full border border-[#dfdbe3] bg-white text-lg font-light text-[#514c57] transition hover:border-[#8b72e8]">+</button></div>
+              <div className="mb-6 flex items-center justify-between"><div><div className="micro-label">Sequence path</div><div className="mt-1 text-[11px] text-[#99949e]">{steps.length} bounded actions</div></div><button aria-label="Add successor step" onClick={addStep} className="grid h-8 w-8 place-items-center rounded-full border border-[#dfdbe3] bg-white text-lg font-light text-[#514c57] transition hover:border-[#8b72e8]">+</button></div>
               <div className="relative">
                 <div className="absolute bottom-7 left-[11px] top-7 w-px bg-[#ded9e3]" />
                 {steps.map((step, index) => {

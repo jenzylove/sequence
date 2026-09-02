@@ -1,4 +1,6 @@
-export default function Nav({ onBuild, walletConnected, onWallet }) {
+import { shortAccount } from "../hooks/useWallet.js";
+
+export default function Nav({ onBuild, wallet, onWallet }) {
   return (
     <header className="relative z-20">
       <div className="mx-auto flex max-w-[1280px] items-center justify-between px-7 py-7 sm:px-12 lg:px-16">
@@ -14,7 +16,7 @@ export default function Nav({ onBuild, walletConnected, onWallet }) {
           <a href="#how-it-works" className="transition hover:text-black">How it works</a>
           <a href="#proof" className="transition hover:text-black">Proof</a>
         </nav>
-        <button onClick={onWallet} className="rounded-full border border-[#18171d] bg-white px-5 py-2 text-[11px] font-semibold text-[#18171d] transition hover:bg-[#18171d] hover:text-white">{walletConnected ? "0x7A2…91F" : "Connect wallet"}</button>
+        <button onClick={onWallet} className="rounded-full border border-[#18171d] bg-white px-5 py-2 text-[11px] font-semibold text-[#18171d] transition hover:bg-[#18171d] hover:text-white">{wallet.connected ? shortAccount(wallet.account) : "Connect wallet"}</button>
       </div>
     </header>
   );
