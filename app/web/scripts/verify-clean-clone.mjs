@@ -7,9 +7,9 @@
 // on disk. Only a clean checkout catches that class of mistake, which is exactly
 // what a deployment does.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -32,27 +32,29 @@ try {
 
   const web = join(work, "app", "web");
 
-  // Every local import must exist in the clone, or the build will fail the way
-  // the deployment did.
-  const missing = run("node", ["-e", `
-    const fs=require('fs'),path=require('path');
-    const root=${JSON.stringify(web)};
-    const out=[];
-    const walk=(d)=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){
-      const p=path.join(d,e.name);
-      if(e.isDirectory()){ if(!/node_modules|dist/.test(e.name)) walk(p); continue; }
-      if(!/\\.(js|jsx|mjs)$/.test(e.name)) continue;
-      const src=fs.readFileSync(p,'utf8');
-      for(const m of src.matchAll(/from\\s+["'](\\.[^"']+)["']/g)){
-        const t=path.resolve(path.dirname(p),m[1]);
-        if(!fs.existsSync(t)) out.push(path.relative(root,p)+' -> '+m[1]);
+  // Every relative import must exist in the clone, or the build fails the way
+  // the deployment did. Checked in-process against the cloned tree.
+  const missing = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!/^(node_modules|dist)$/.test(entry.name)) walk(full);
+        continue;
       }
-    }};
-    walk(path.join(root,'src'));
-    console.log(out.join('\\n'));
-  `], repo).trim();
-  missing ? bad("every local import resolves in the clone", missing.split("\n").slice(0, 5).join("; "))
-          : ok("every local import resolves in the clone");
+      if (!/\.(js|jsx|mjs)$/.test(entry.name)) continue;
+      const source = readFileSync(full, "utf8");
+      for (const match of source.matchAll(/from\s+["'](\.[^"']+)["']/g)) {
+        if (!existsSync(resolve(dirname(full), match[1]))) {
+          missing.push(`${relative(web, full)} -> ${match[1]}`);
+        }
+      }
+    }
+  };
+  walk(join(web, "src"));
+  missing.length
+    ? bad("every local import resolves in the clone", missing.slice(0, 5).join("; "))
+    : ok("every local import resolves in the clone");
 
   run("npm", ["install", "--silent", "--no-audit", "--no-fund"], web);
   ok("dependencies install from the committed manifest");
