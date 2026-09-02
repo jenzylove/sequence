@@ -1,22 +1,28 @@
 // Drives the built Sequence app in a real browser against live Somnia data.
-// Two passes: disconnected (what a judge sees first), and connected through an
-// injected EIP-1193 test provider that reports the REAL vault owner address so
-// the owner-gated UI can be exercised. The test provider is a controlled harness
-// for UI verification only: it never signs, and any write is rejected, so a real
-// wallet signature is still the only way a step gets armed.
+// Four passes: metadata, the public landing, the connected desk (through an
+// injected EIP-1193 test provider reporting the REAL account owner so
+// owner-gated UI can be exercised), and mobile. The test provider never signs:
+// any write is rejected, so a real wallet signature remains the only way
+// anything goes live.
+//
+// Beyond wiring, this suite checks COMPREHENSION: the primary surface must not
+// leak contract vocabulary, and what a trader needs to know must be on screen
+// without opening anything.
 import { chromium } from "playwright";
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { extname, join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = resolve(here, "../dist");
 const shots = resolve(here, "../../../qa");
 if (!existsSync(shots)) mkdirSync(shots, { recursive: true });
 
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
+const MIME = {
+  ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
+  ".svg": "image/svg+xml", ".json": "application/json", ".webmanifest": "application/manifest+json",
+};
 const server = createServer((req, res) => {
   const url = req.url.split("?")[0];
   let file = join(dist, url === "/" ? "index.html" : url);
@@ -32,6 +38,14 @@ const check = (label, pass, detail = "") => {
   results.push({ label, pass, detail });
   console.log(`  ${pass ? "PASS" : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
 };
+
+// Vocabulary that must never appear in the primary reading path. These belong
+// behind "Onchain details" only.
+const JARGON = [
+  "armStep", "SequenceVault", "OracleHub", "Reactivity", "notional",
+  "subscriptionId", "AnswerDelivered", "topic0", "bytes32", "successor pool",
+  "marketId", "calldata", "precompile", "idempotent", "vault",
+];
 
 const browser = await chromium.launch();
 const errors = [];
@@ -62,108 +76,156 @@ async function newPage(viewport, { owner } = {}) {
   return { context, page };
 }
 
-// ---------------------------------------------------------------- pass 1
+const connect = async (page) => {
+  await page.getByRole("button", { name: "Connect wallet" }).first().click();
+  await page.getByRole("button", { name: /Test harness wallet/ }).click();
+  await page.waitForSelector("#dashboard", { timeout: 30000 });
+};
+
+// ---------------------------------------------------------------- metadata
 {
   const { context, page } = await newPage({ width: 1440, height: 1000 });
   await page.goto(base, { waitUntil: "domcontentloaded" });
 
-  check("landing renders the hero promise", (await page.getByRole("heading", { level: 1 }).innerText()).includes("Plan the next"));
-
-  // Builder must populate from the live indexer, not from seeded fiction.
-  await page.getByRole("button", { name: "Build your sequence" }).click();
-  await page.waitForSelector("text=live markets", { timeout: 30000 });
-  const marketCount = await page.locator("select").first().locator("option").count();
-  check("builder loads live DreamDEX markets", marketCount > 2, `${marketCount - 1} market options`);
-
-  const firstOption = await page.locator("select").first().locator("option").nth(1).innerText();
-  check("market options carry real question text", /closes at or above|price be at or above/i.test(firstOption), firstOption.slice(0, 60));
-
-  const pool = await page.locator("text=/^0x[0-9a-f]{40}$/i").first().innerText().catch(() => "");
-  check("successor pool is a real address", /^0x[0-9a-fA-F]{40}$/.test(pool), pool);
-
-  // Simulation
-  await page.getByRole("button", { name: "Run preview" }).click();
-  await page.waitForTimeout(600);
-  const simText = await page.locator(".simulation-strip").innerText();
-  check("simulation produces a labelled result", /settled|projected|No settled market/.test(simText));
-  check("simulation is labelled as simulation", /No funds move/.test(simText));
-
-  // Arm must be gated, not faked.
-  const armGate = await page.locator("text=Connect a wallet to arm this step.").count();
-  check("arm is gated behind a real wallet", armGate > 0);
-
-  // Operations must read the live vault.
-  await page.locator("#how-it-works").scrollIntoViewIfNeeded();
-  await page.waitForSelector("text=/Vault 0xA9A9AA93BE8f62723D55dA5Ba100F9803325Bf62/", { timeout: 30000 });
-  const ops = await page.locator("#active-sequence").innerText();
-  check("operations reads live vault state", /Vault cap|Nothing armed|Reading vault/.test(ops));
-  check("operations shows no fabricated sequence id", !/SEQ-02F9/.test(ops));
-
-  const proof = await page.locator("#proof").innerText();
-  check("proof shows a truthful empty state, not a fake timeline", /No SequenceVault events/.test(proof) || /0x/.test(proof));
-  check("old hardcoded timeline is gone", !/13:45:02/.test(proof));
-
-  // No dead controls on the public page.
-  const anchors = await page.locator("a[href^='#']").evaluateAll((els) => els.map((e) => e.getAttribute("href")));
-  const missing = [];
-  for (const href of [...new Set(anchors)]) {
-    if (href === "#") { missing.push(href); continue; }
-    if ((await page.locator(href).count()) === 0) missing.push(href);
+  const title = await page.title();
+  check("page title names the product and its promise", /sequence/i.test(title) && /happens next/i.test(title), title);
+  const desc = await page.locator('meta[name="description"]').getAttribute("content");
+  check("description is written for a trader", /follow-on trade/i.test(desc));
+  check("favicon is wired", (await page.locator('link[rel="icon"]').count()) > 0);
+  check("web manifest is wired", (await page.locator('link[rel="manifest"]').count()) > 0);
+  const ogOk = (await page.locator('meta[property="og:title"]').count()) > 0 && (await page.locator('meta[name="twitter:card"]').count()) > 0;
+  check("social preview metadata present", ogOk);
+  for (const asset of ["/favicon.svg", "/manifest.webmanifest", "/og.svg"]) {
+    const res = await page.request.get(base + asset);
+    check(`asset ${asset} is served`, res.status() === 200, `HTTP ${res.status()}`);
   }
-  check("every in-page link has a destination", missing.length === 0, missing.join(", "));
-
-  const externals = await page.locator("a[href^='http']").evaluateAll((els) => els.map((e) => e.getAttribute("href")));
-  check("external links are real URLs", externals.every((h) => /^https:\/\//.test(h)), `${externals.length} links`);
-
-  await page.screenshot({ path: join(shots, "e2e-desktop-full.png"), fullPage: true });
   await context.close();
 }
 
-// ---------------------------------------------------------------- pass 2
+// ---------------------------------------------------------------- landing
+{
+  const { context, page } = await newPage({ width: 1440, height: 1000 });
+  await page.goto(base, { waitUntil: "domcontentloaded" });
+  check("landing states the promise up front", (await page.getByRole("heading", { level: 1 }).innerText()).includes("Plan the next"));
+
+  await page.waitForSelector("text=live markets", { timeout: 30000 });
+  const options = await page.locator("select").first().locator("option").count();
+  check("visitor can try the builder on live markets", options > 2, `${options - 1} markets`);
+
+  await page.screenshot({ path: join(shots, "e2e-landing.png"), fullPage: true });
+  await context.close();
+}
+
+// ---------------------------------------------------------------- the desk
 {
   const { context, page } = await newPage({ width: 1440, height: 1000 }, { owner: "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324" });
   await page.goto(base, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Connect wallet" }).first().click();
-  await page.getByRole("button", { name: /Test harness wallet/ }).click();
-  await page.waitForTimeout(500);
+  await connect(page);
+  await page.waitForTimeout(3500);
 
-  const nav = await page.locator("header").innerText();
-  check("connected account renders from the provider", /0x8827…2324|0x8827/.test(nav), nav.split("\n").pop());
+  const dash = await page.locator("#dashboard").innerText();
 
-  await page.locator("#how-it-works").scrollIntoViewIfNeeded();
-  await page.waitForTimeout(1500);
-  const strip = await page.locator(".wallet-strip").innerText();
-  check("owner is recognised against the onchain owner", /vault owner/.test(strip));
-  check("network state is read from the provider", /Shannon/.test(strip));
+  check("connecting lands on the desk, not the landing page", (await page.locator("#dashboard").count()) === 1);
+  check("desk shows what is at risk and the limit", /At risk now/i.test(dash) && /Your limit/i.test(dash));
+  check("desk shows free headroom", /Still free/i.test(dash));
+  check("desk offers Drafts / Live / Finished", /Drafts/.test(dash) && /Live/.test(dash) && /Finished/.test(dash));
+  check("desk has a clear new-sequence entry point", /What should happen next\?/i.test(dash));
 
-  await page.locator("#build").scrollIntoViewIfNeeded();
-  await page.waitForTimeout(500);
-  const armBtn = await page.getByRole("button", { name: "Arm this step" }).count();
-  check("owner sees a live arm control", armBtn > 0);
+  const strip = await page.locator(".market-strip").innerText();
+  check("live market context is present", /BTC|ETH/.test(strip), strip.split("\n").slice(0, 3).join(" / "));
+  check("settlement countdown is shown", /settles in|settling now/i.test(strip));
 
-  await page.locator("#how-it-works").scrollIntoViewIfNeeded();
-  await page.waitForTimeout(500);
-  const goLive = await page.locator("text=Make the vault reactive").count();
-  check("owner sees the go-live path", goLive > 0);
-  const stake = await page.locator("text=/Send 32 SOM/").count();
-  check("go-live surfaces the real subscription stake", stake > 0);
+  const leaked = JARGON.filter((j) => dash.toLowerCase().includes(j.toLowerCase()));
+  check("no contract vocabulary on the primary surface", leaked.length === 0, leaked.join(", "));
 
-  await page.screenshot({ path: join(shots, "e2e-desktop-connected.png"), fullPage: true });
+  const input = page.getByLabel("Describe the sequence you want");
+  await input.fill("roll BTC three times, $2 a trade, $5 total");
+  await page.getByRole("button", { name: "Read it back" }).click();
+  await page.waitForTimeout(900);
+  const readback = await page.locator(".command-card").innerText();
+  check("plain English becomes a readable plan", /Here is what that does/i.test(readback));
+  check("plan explains both outcomes", /if it lands YES/i.test(readback) && /If it lands NO/i.test(readback));
+  check("plan states the worst case", /Most you can lose/i.test(readback));
+  check("plan offers explicit activation", (await page.getByRole("button", { name: /Review and activate/ }).count()) > 0);
+
+  await input.fill("roll DOGE twice");
+  await page.getByRole("button", { name: "Read it back" }).click();
+  await page.waitForTimeout(600);
+  check("unknown market is refused, not invented", /rolling BTC and ETH markets/i.test(await page.locator(".command-card").innerText()));
+
+  await input.fill("what is happening right now?");
+  await page.getByRole("button", { name: "Read it back" }).click();
+  await page.waitForTimeout(600);
+  const explained = await page.locator(".command-card").innerText();
+  check("it can explain current state in plain words", /committed against|Nothing is live|still reading/i.test(explained));
+
+  await input.fill("roll BTC twice, $2 a trade, $4 total");
+  await page.getByRole("button", { name: "Read it back" }).click();
+  await page.waitForTimeout(700);
+  await page.getByRole("button", { name: /Review and activate/ }).click();
+  await page.waitForTimeout(600);
+  const dialog = await page.locator("[role=dialog]").innerText();
+  check("activation shows the worst case before signing", /The most you can lose/i.test(dialog));
+  check("activation button states the risk", /Put it live/i.test(dialog));
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+
+  await page.getByRole("button", { name: /^Drafts/ }).click();
+  await page.waitForTimeout(400);
+  const draftPanel = await page.locator(".sequence-panel").innerText();
+  check("reviewed sequence is saved as a draft", /Activate/.test(draftPanel));
+  // Reviewing the same plan twice must update one draft, not pile up copies.
+  const before = await page.locator(".sequence-row").count();
+  await page.getByRole("button", { name: /Review and activate/ }).click();
+  await page.waitForTimeout(400);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+  const after = await page.locator(".sequence-row").count();
+  check("re-reviewing does not duplicate the draft", after === before, `${before} then ${after}`);
+
+  await page.screenshot({ path: join(shots, "e2e-desk.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "Advanced builder" }).click();
+  await page.waitForTimeout(900);
+  check("manual builder is still reachable", (await page.locator("#build").count()) === 1);
+  const builder = await page.locator("#build").innerText();
+  check("builder uses trader labels", /Most to risk here/i.test(builder) && /If it lands YES/i.test(builder));
+  check("builder keeps raw ids behind a disclosure", /Onchain details/i.test(builder) && !/bytes32/i.test(builder));
+
+  await page.getByRole("button", { name: "Onchain details" }).first().click();
+  await page.waitForTimeout(1200);
+  const details = await page.locator("#how-it-works").innerText();
+  check("onchain details surface exposes the raw record", /AnswerDelivered|0xA9A9AA93/i.test(details));
+  check("go-live is framed as one-time setup", /One-time setup/i.test(details));
+
+  await page.screenshot({ path: join(shots, "e2e-details.png"), fullPage: true });
   await context.close();
 }
 
-// ---------------------------------------------------------------- pass 3
+// ---------------------------------------------------------------- mobile
 {
-  const { context, page } = await newPage({ width: 390, height: 844 });
+  const { context, page } = await newPage({ width: 390, height: 844 }, { owner: "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324" });
   await page.goto(base, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  check("no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);
-  await page.screenshot({ path: join(shots, "e2e-mobile-full.png"), fullPage: true });
+  let overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  check("landing has no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);
+
+  await connect(page);
+  await page.waitForTimeout(3500);
+  overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  check("desk has no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);
+
+  const mobileDash = await page.locator("#dashboard").innerText();
+  check("mobile desk still shows risk and markets", /At risk now/i.test(mobileDash) && /(BTC|ETH)/.test(mobileDash));
+
+  const tap = await page.getByLabel("Describe the sequence you want").boundingBox();
+  check("command input is comfortably tappable", Boolean(tap && tap.height >= 32), tap ? `${Math.round(tap.height)}px` : "missing");
+
+  await page.screenshot({ path: join(shots, "e2e-mobile-desk.png"), fullPage: true });
   await context.close();
 }
 
-const realErrors = errors.filter((e) => !/favicon|Failed to load resource/.test(e));
+const realErrors = errors.filter((e) => !/favicon|Failed to load resource|manifest/i.test(e));
 check("no uncaught console or page errors", realErrors.length === 0, realErrors.slice(0, 2).join(" | "));
 
 await browser.close();

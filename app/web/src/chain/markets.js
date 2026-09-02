@@ -33,6 +33,8 @@ const MARKET_FIELDS = `
   oracleQuestionId
   resolvedAtTimestamp
   lastPrice
+  tradeCount
+  cumulativeQuoteVolume
 `;
 
 function shape(row) {
@@ -53,6 +55,8 @@ function shape(row) {
     questionId: row.oracleQuestionId ? BigInt(row.oracleQuestionId) : null,
     resolvedAt: row.resolvedAtTimestamp ? Number(row.resolvedAtTimestamp) : null,
     lastPrice: row.lastPrice ? BigInt(row.lastPrice) : null,
+    tradeCount: row.tradeCount ? Number(row.tradeCount) : 0,
+    volume: row.cumulativeQuoteVolume ? BigInt(row.cumulativeQuoteVolume) : 0n,
   };
 }
 
@@ -108,4 +112,32 @@ export function marketLabel(m) {
   if (!m) return "Unknown market";
   const when = m.expiry ? new Date(m.expiry * 1000).toUTCString().slice(5, 22) : "no expiry";
   return `${m.asset || "Market"} · ${when} UTC`;
+}
+
+// Live spot reference prices for the assets these markets settle against.
+// These are real SPOT market prints from the same indexer, used only as
+// context; Sequence never forecasts them.
+export async function fetchSpotContext() {
+  const data = await gql(
+    `query Spot {
+       Market(limit: 12, where: { marketType: { _eq: "SPOT" } }) {
+         baseSymbol quoteSymbol baseDecimals quoteDecimals lastPrice markPrice lastTradeAt
+       }
+     }`,
+  );
+  const wanted = { WBTC: "BTC", WETH: "ETH", SOMI: "SOMI" };
+  const out = {};
+  for (const row of data.Market || []) {
+    const asset = wanted[row.baseSymbol];
+    if (!asset || !row.lastPrice) continue;
+    const decimals = row.quoteDecimals ? Number(row.quoteDecimals) : 18;
+    out[asset] = {
+      asset,
+      symbol: row.baseSymbol,
+      price: Number(row.lastPrice) / 10 ** decimals,
+      mark: row.markPrice ? Number(row.markPrice) / 10 ** decimals : null,
+      at: row.lastTradeAt ? Number(row.lastTradeAt) : null,
+    };
+  }
+  return out;
 }

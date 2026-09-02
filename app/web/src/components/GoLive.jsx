@@ -38,32 +38,32 @@ export default function GoLive({ vault, wallet }) {
   const steps = [
     {
       key: "fund",
-      title: "Stake the subscription",
-      detail: `Somnia Reactivity charges the 32 SOM subscription stake to the subscribing contract, so the vault has to hold it. Vault balance: ${fmtSom(state.native)}.`,
+      title: "Turn on market results",
+      detail: `Your account puts up a 32 SOM stake so the network will push market results straight to it. Currently holding ${fmtSom(state.native)}.`,
       complete: funded,
-      action: "Send 32 SOM",
+      action: "Put up the stake",
       run: () => fundVault({ provider: wallet.provider, account: wallet.account, value: SUBSCRIPTION_STAKE }),
     },
     {
       key: "subscribe",
-      title: "Subscribe to OracleHub",
+      title: "Start listening",
       detail: state.subscribed
-        ? `Subscription ${state.subscriptionId.toString()} is live. Every AnswerDelivered resolution now reaches this vault.`
-        : "Registers the vault's own filter on the OracleHub AnswerDelivered topic, so resolutions are delivered to it automatically.",
+        ? "Your account is listening. Every market result now reaches it automatically."
+        : "Registers your account to receive market results the moment they settle, so your sequences run without you.",
       complete: state.subscribed,
-      blocked: !funded && "Stake the subscription first.",
-      action: "Subscribe",
+      blocked: !funded && "Put up the stake first.",
+      action: "Start listening",
       run: () => subscribeAllMarkets({ provider: wallet.provider, account: wallet.account }),
     },
     {
       key: "approve",
-      title: "Approve the successor pool",
+      title: "Let it place your trades",
       detail: collateralised
-        ? `The vault holds ${fmt(state.bankroll)} of collateral. Approve the pool of an armed step so it can pull the bounded notional.`
-        : "The vault holds no collateral yet. Send test USDC to the vault address, then approve the armed step's pool.",
+        ? `Your account holds ${fmt(state.bankroll)} to trade with. Give the market permission to draw on it, up to your limit and no further.`
+        : "Your account holds no funds yet. Send test USDC to it, then give the market permission to draw on it.",
       complete: false,
-      blocked: (!collateralised && "Fund the vault with test USDC first.") || (pools.length === 0 && "Arm a step so there is a pool to approve."),
-      action: "Approve pool",
+      blocked: (!collateralised && "Add funds to your account first.") || (pools.length === 0 && "Put a sequence live first, so there is a market to approve."),
+      action: "Give permission",
       run: () => approvePool({ provider: wallet.provider, account: wallet.account, pool: pools[0], amount: state.maxOutstanding }),
     },
   ];
@@ -72,10 +72,10 @@ export default function GoLive({ vault, wallet }) {
     <div className="workspace-card mt-10 p-7">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <div className="micro-label">Owner · go live</div>
-          <h3 className="mt-2 text-[20px] font-extrabold tracking-[-.04em] text-[#151318]">Make the vault reactive</h3>
+          <div className="micro-label">One-time setup</div>
+          <h3 className="mt-2 text-[20px] font-extrabold tracking-[-.04em] text-[#151318]">Switch the account on</h3>
         </div>
-        <span className="text-[10px] text-[#99949e]">You sign each transaction</span>
+        <span className="text-[10px] text-[#99949e]">Done once. You sign each step</span>
       </div>
 
       <div className="mt-7 grid gap-4 lg:grid-cols-3">
@@ -93,11 +93,11 @@ export default function GoLive({ vault, wallet }) {
                 onClick={() => run(step.key, step.run)}
                 className="soft-button mt-4 bg-[#111014] text-white disabled:opacity-35"
               >
-                {busy === step.key ? "Confirm in wallet…" : step.action}
+                {busy === step.key ? "Approve in your wallet…" : step.action}
               </button>
             )}
             {step.blocked && !step.complete && <p className="mt-3 text-[9px] font-semibold text-[#a8a2ad]">{step.blocked}</p>}
-            {done[step.key] && <a href={txUrl(done[step.key])} target="_blank" rel="noreferrer" className="mt-3 block text-[9px] font-bold text-[#6f58c2]">View transaction ↗</a>}
+            {done[step.key] && <a href={txUrl(done[step.key])} target="_blank" rel="noreferrer" className="mt-3 block text-[9px] font-bold text-[#6f58c2]">Receipt ↗</a>}
           </div>
         ))}
       </div>

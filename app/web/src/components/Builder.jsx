@@ -6,10 +6,13 @@ import {
 } from "../strategy.js";
 import { armStep } from "../chain/vault.js";
 import { marketLabel } from "../chain/markets.js";
-import { txUrl } from "../chain/config.js";
+import { txUrl, addressUrl } from "../chain/config.js";
+import { ORDER_TYPE_COPY, money } from "../lib/language.js";
+import { upsertDraft } from "../lib/store.js";
 
-export default function Builder({ markets, vault, wallet, onWallet }) {
-  const [strategy, setStrategy] = useState(() => loadStrategy());
+export default function Builder({ markets, vault, wallet, onWallet, initialDraft = null, advanced = false, onClose = null }) {
+  const [strategy, setStrategy] = useState(() => initialDraft || loadStrategy());
+  const [showRaw, setShowRaw] = useState(false);
   const [selected, setSelected] = useState(null);
   const [ran, setRan] = useState(null);
   const [arming, setArming] = useState(null);
@@ -21,7 +24,12 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
     setStrategy(seedFromMarkets(markets.open));
   }, [strategy, markets.status, markets.open]);
 
-  useEffect(() => { if (strategy) saveStrategy(strategy); }, [strategy]);
+  useEffect(() => { if (initialDraft) setStrategy(initialDraft); }, [initialDraft]);
+  useEffect(() => {
+    if (!strategy) return;
+    saveStrategy(strategy);
+    if (strategy.id) upsertDraft(strategy);
+  }, [strategy]);
   useEffect(() => {
     if (!strategy?.steps.length) return;
     if (!strategy.steps.some((s) => s.key === selected)) setSelected(strategy.steps[0].key);
@@ -88,13 +96,13 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
     errors.length === 0 && Boolean(step?.pool && step?.triggerMarketId);
 
   const armReason = (step) => {
-    if (!wallet.connected) return "Connect a wallet to arm this step.";
-    if (!wallet.onShannon) return "Switch your wallet to Somnia Shannon to arm.";
-    if (!vault.state) return "Reading vault state from Shannon.";
-    if (!isOwner) return `Only the vault owner (${owner ? `${owner.slice(0, 6)}…${owner.slice(-4)}` : "unknown"}) can arm a step.`;
-    if (vault.state.paused) return "The vault is paused; unpause it before arming.";
+    if (!wallet.connected) return "Connect a wallet to put this live.";
+    if (!wallet.onShannon) return "Switch your wallet to the Somnia network.";
+    if (!vault.state) return "Reading your account from the network.";
+    if (!isOwner) return "This wallet does not control the trading account.";
+    if (vault.state.paused) return "Trading is paused. Resume it first.";
     if (errors.length) return errors[0].message;
-    if (!step?.pool || !step?.triggerMarketId) return "Pick a trigger and successor market first.";
+    if (!step?.pool || !step?.triggerMarketId) return "Pick both markets first.";
     return "";
   };
 
@@ -141,12 +149,15 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
       <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-32">
         <div className="grid items-end gap-10 lg:grid-cols-[.8fr_1.2fr]">
           <div>
-            <span className="section-tag bg-[#52d8ed]">Builder</span>
+            <span className="section-tag bg-[#52d8ed]">{advanced ? "Advanced builder" : "Try it"}</span>
             <h2 className="mt-5 max-w-[520px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Set the rules.<br />See the risk.</h2>
           </div>
           <div className="max-w-[520px] lg:justify-self-end">
-            <p className="text-[14px] leading-[1.75] text-[#65616b]">Build one bounded successor at a time. Every value below maps to the same branch and cap rules enforced by the Sequence vault.</p>
-            <div className="mt-5 flex gap-7 text-[10px] font-semibold uppercase tracking-[.13em] text-[#98939d]"><span>Live markets</span><span>Simulate first</span><span>Vault-aligned</span></div>
+            <p className="text-[14px] leading-[1.75] text-[#65616b]">Set each follow-on trade by hand. Every number here is the same one your account checks before it risks anything.</p>
+            <div className="mt-5 flex flex-wrap items-center gap-7 text-[10px] font-semibold uppercase tracking-[.13em] text-[#98939d]">
+              <span>Live markets</span><span>Test it first</span><span>Limits enforced</span>
+              {onClose && <button onClick={onClose} className="normal-case tracking-normal text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Back to your desk</button>}
+            </div>
           </div>
         </div>
 
@@ -213,7 +224,7 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
                             <option value={selectedStep.triggerMarketId}>{selectedStep.triggerLabel || "Previously selected market"}</option>}
                         </select>
                       </Field>
-                      <Field label="Then place into">
+                      <Field label="Then trade this market">
                         <select className="product-input" value={selectedStep.successorMarketId} onChange={(e) => setSuccessor(selectedStep.key, e.target.value)}>
                           <option value="">Select a successor market…</option>
                           {markets.open.map((m) => <option key={m.marketId} value={m.marketId}>{marketLabel(m)} · {m.question}</option>)}
@@ -221,22 +232,39 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
                             <option value={selectedStep.successorMarketId}>{selectedStep.successorLabel || "Previously selected market"}</option>}
                         </select>
                       </Field>
-                      <Field label="Limit price"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.price) / 1e6} onChange={(e) => update(selectedStep.key, { price: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
-                      <Field label="Size"><div className="input-prefix"><input type="number" value={Number(selectedStep.quantity)} onChange={(e) => update(selectedStep.key, { quantity: BigInt(Math.max(0, Math.round(Number(e.target.value)))) })} /><span>contracts</span></div></Field>
-                      <Field label="Step cap"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.notionalCap) / 1e6} onChange={(e) => update(selectedStep.key, { notionalCap: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
-                      <Field label="When outcome 0 wins">
+                      <Field label="Price per contract"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.price) / 1e6} onChange={(e) => update(selectedStep.key, { price: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
+                      <Field label="How many contracts"><div className="input-prefix"><input type="number" value={Number(selectedStep.quantity)} onChange={(e) => update(selectedStep.key, { quantity: BigInt(Math.max(0, Math.round(Number(e.target.value)))) })} /><span>contracts</span></div></Field>
+                      <Field label="Most to risk here"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.notionalCap) / 1e6} onChange={(e) => update(selectedStep.key, { notionalCap: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
+                      <Field label="If it lands YES">
                         <select className="product-input" value={selectedStep.buyYesOnWin0 ? "yes" : "no"} onChange={(e) => update(selectedStep.key, { buyYesOnWin0: e.target.value === "yes" })}>
                           <option value="yes">Buy YES</option><option value="no">Buy NO</option>
                         </select>
                       </Field>
-                      <Field label="Order type">
+                      <Field label="How to fill it">
                         <select className="product-input" value={selectedStep.orderType} onChange={(e) => update(selectedStep.key, { orderType: Number(e.target.value) })}>
-                          {ORDER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                          {ORDER_TYPES.map((t) => <option key={t.value} value={t.value}>{ORDER_TYPE_COPY[t.value]?.label || t.label}</option>)}
                         </select>
                       </Field>
-                      <Field label="Successor pool">
-                        <div className="product-input truncate font-mono text-[10px] text-[#77717d]">{selectedStep.pool || "Set by the successor market"}</div>
+                      <Field label="Trade goes to">
+                        <div className="product-input truncate text-[12px] text-[#77717d]">{selectedStep.successorLabel ? "The market you picked above" : "Pick a market above"}</div>
                       </Field>
+                    </div>
+
+                    <div className="mt-6">
+                      <button onClick={() => setShowRaw((v) => !v)} className="details-toggle">
+                        {showRaw ? "Hide onchain details" : "Onchain details"}
+                      </button>
+                      {showRaw && (
+                        <dl className="mt-4 space-y-2.5 rounded-sm border border-[#ece9ef] bg-[#fbfbfc] p-5 font-mono text-[9px] leading-[1.6] text-[#77717d]">
+                          <RawRow label="Trigger market id" value={selectedStep.triggerMarketId} />
+                          <RawRow label="Successor market id" value={selectedStep.successorMarketId} />
+                          <RawRow label="Binary pool" value={selectedStep.pool} href={selectedStep.pool ? addressUrl(selectedStep.pool) : null} />
+                          <RawRow label="Order price (raw, 6dp)" value={selectedStep.price.toString()} />
+                          <RawRow label="Quantity" value={selectedStep.quantity.toString()} />
+                          <RawRow label="Notional cap (raw)" value={selectedStep.notionalCap.toString()} />
+                          <RawRow label="Order type" value={`${selectedStep.orderType} · ${ORDER_TYPE_COPY[selectedStep.orderType]?.label}`} />
+                        </dl>
+                      )}
                     </div>
 
                     <div className="mt-8 rounded-sm border border-[#ece9ef] bg-[#fbfbfc] p-5">
@@ -256,19 +284,19 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
                     <div className="mt-8 rounded-sm border border-[#ece9ef] p-5">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
-                          <div className="micro-label">Arm on Shannon</div>
+                          <div className="micro-label">Put this step live</div>
                           <p className="mt-2 max-w-[360px] text-[10px] leading-[1.65] text-[#77717d]">
-                            Sends a real <span className="font-mono">armStep</span> transaction to the Sequence vault. You approve it in your wallet, and the vault enforces both caps itself.
+                            You approve this in your wallet. From then on it runs on its own, and your account will not let it risk more than the limits you set.
                           </p>
                         </div>
                         {canArm(selectedStep)
-                          ? <button onClick={() => doArm(selectedStep)} disabled={arming === selectedStep.key} className="soft-button bg-[#111014] text-white disabled:opacity-50">{arming === selectedStep.key ? "Confirm in wallet…" : "Arm this step"}</button>
-                          : <button onClick={wallet.connected ? undefined : onWallet} disabled={wallet.connected} className="soft-button border border-[#dcd7e1] bg-white text-[#252229] disabled:opacity-45">{wallet.connected ? "Cannot arm yet" : "Connect wallet"}</button>}
+                          ? <button onClick={() => doArm(selectedStep)} disabled={arming === selectedStep.key} className="soft-button bg-[#111014] text-white disabled:opacity-50">{arming === selectedStep.key ? "Approve in your wallet…" : "Put it live"}</button>
+                          : <button onClick={wallet.connected ? undefined : onWallet} disabled={wallet.connected} className="soft-button border border-[#dcd7e1] bg-white text-[#252229] disabled:opacity-45">{wallet.connected ? "Not ready yet" : "Connect wallet"}</button>}
                       </div>
                       {!canArm(selectedStep) && <p className="mt-3 text-[10px] font-semibold text-[#a8a2ad]">{armReason(selectedStep)}</p>}
                       {armResult?.key === selectedStep.key && (
                         armResult.ok
-                          ? <p className="mt-3 text-[10px] font-semibold text-[#40906b]">Step armed onchain. <a className="text-[#6f58c2]" href={txUrl(armResult.hash)} target="_blank" rel="noreferrer">View transaction ↗</a></p>
+                          ? <p className="mt-3 text-[10px] font-semibold text-[#40906b]">This step is live. <a className="text-[#6f58c2]" href={txUrl(armResult.hash)} target="_blank" rel="noreferrer">Receipt ↗</a></p>
                           : <p className="mt-3 text-[10px] font-semibold text-[#dc6e58]" role="alert">{armResult.error || "The transaction did not succeed."}</p>
                       )}
                     </div>
@@ -287,10 +315,10 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
                     <div className="mt-2 flex justify-between font-mono text-[8px] text-[#aaa5ae]"><span>committed</span><span>{fmt(strategy.maxOutstanding)} cap</span></div>
                   </div>
                   <div className="mt-7 space-y-4 border-t border-[#e7e3ea] pt-5">
-                    <RiskRow label="Bankroll" value={<input aria-label="Bankroll" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.bankroll) / 1e6} onChange={(e) => patch({ bankroll: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
-                    <RiskRow label="Outstanding cap" value={<input aria-label="Vault cap" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.maxOutstanding) / 1e6} onChange={(e) => patch({ maxOutstanding: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
-                    <RiskRow label="Cap checks" value={errors.length ? `${errors.length} issue${errors.length > 1 ? "s" : ""}` : warnings.length ? "Cap will bind" : "Passing"} good={!errors.length && !warnings.length} />
-                    <RiskRow label="Vault cap onchain" value={vault.state ? fmt(vault.state.maxOutstanding) : "reading…"} />
+                    <RiskRow label="Funds available" value={<input aria-label="Bankroll" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.bankroll) / 1e6} onChange={(e) => patch({ bankroll: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
+                    <RiskRow label="Your total limit" value={<input aria-label="Vault cap" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.maxOutstanding) / 1e6} onChange={(e) => patch({ maxOutstanding: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
+                    <RiskRow label="Limit checks" value={errors.length ? `${errors.length} issue${errors.length > 1 ? "s" : ""}` : warnings.length ? "Cap will bind" : "Passing"} good={!errors.length && !warnings.length} />
+                    <RiskRow label="Limit on your account" value={vault.state ? fmt(vault.state.maxOutstanding) : "reading…"} />
                   </div>
                   {errors.length > 0 && (
                     <ul className="mt-5 space-y-2 border-t border-[#e7e3ea] pt-5 text-[9px] leading-[1.5] text-[#c47b64]">
@@ -309,7 +337,7 @@ export default function Builder({ markets, vault, wallet, onWallet }) {
                 <div>
                   <div className="micro-label">Simulation</div>
                   <p className="mt-2 max-w-[520px] text-[11px] leading-[1.65] text-[#77717d]">
-                    Replays the plan against genuine settled DreamDEX markets from the Somnia indexer, using the same winner, branch, idempotency and cap logic as the vault. No funds move.
+                    Runs your rules against markets that have already settled, using exactly the logic your account uses when it trades for real. Nothing moves and nothing is risked.
                   </p>
                 </div>
                 {errors.length > 0
@@ -340,6 +368,17 @@ function stepHeadline(step) {
   const when = step.triggerExpiry ? new Date(step.triggerExpiry * 1000).toUTCString().slice(17, 22) : "";
   const asset = /BTC/i.test(step.triggerLabel) ? "BTC" : /ETH/i.test(step.triggerLabel) ? "ETH" : "Market";
   return when ? `${asset} · ${when} UTC` : asset;
+}
+
+function RawRow({ label, value, href }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <dt className="shrink-0 not-italic">{label}</dt>
+      <dd className="truncate text-right text-[#4f4a56]">
+        {href ? <a href={href} target="_blank" rel="noreferrer" className="hover:text-[#6f58c2]">{value} ↗</a> : (value || "—")}
+      </dd>
+    </div>
+  );
 }
 
 function Field({ label, children }) { return <label className="block"><span className="mb-2 block text-[9px] font-bold uppercase tracking-[.12em] text-[#9d98a2]">{label}</span>{children}</label>; }
