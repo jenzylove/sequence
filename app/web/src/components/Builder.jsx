@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import Chip from "./Chip.jsx";
 import { simulate, fmt, KIND_LABEL } from "../sim.js";
 
 const seed = () => ([
@@ -16,123 +15,105 @@ export default function Builder() {
 
   const strat = useMemo(() => ({ steps, maxOutstanding, bankroll }), [steps, maxOutstanding]);
   const errors = useMemo(() => {
-    const e = [];
-    if (maxOutstanding > bankroll) e.push("Vault cap is higher than the bankroll.");
-    for (const s of steps) {
-      if (s.price <= 0n || s.quantity <= 0n) e.push(`${s.id}: price and size must be above zero.`);
-      if (s.price * s.quantity > s.notionalCap) e.push(`${s.id}: order value ${fmt(s.price * s.quantity)} is over its cap ${fmt(s.notionalCap)}.`);
+    const next = [];
+    if (maxOutstanding > bankroll) next.push("Vault cap is higher than the bankroll.");
+    for (const step of steps) {
+      if (step.price <= 0n || step.quantity <= 0n) next.push(`${step.id}: price and size must be above zero.`);
+      if (step.price * step.quantity > step.notionalCap) next.push(`${step.id}: order value is over its cap.`);
     }
-    return e;
+    return next;
   }, [steps, maxOutstanding]);
 
-  const sel = steps.find((s) => s.id === selected);
-  const update = (id, patch) => setSteps((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
+  const selectedStep = steps.find((step) => step.id === selected);
+  const committed = ran?.committed ?? steps.reduce((sum, step) => sum + step.price * step.quantity, 0n);
+  const exposure = Math.min(100, Number(committed) / Number(maxOutstanding) * 100);
+  const update = (id, change) => setSteps((current) => current.map((step) => step.id === id ? { ...step, ...change } : step));
   const addStep = () => {
-    const id = "step" + (steps.length + 1);
-    setSteps((p) => [...p, { id, label: "New market", triggerMarketId: "0x00…0000", pool: "0xPOOL", price: 500000n, quantity: 4n, buyYesOnWin0: true, notionalCap: 3000000n }]);
+    const id = `step${steps.length + 1}`;
+    setSteps((current) => [...current, { id, label: "New market", triggerMarketId: "0x00…0000", pool: "0xPOOL", price: 500000n, quantity: 4n, buyYesOnWin0: true, notionalCap: 3000000n }]);
     setSelected(id);
+    setRan(null);
   };
-  const removeStep = (id) => { setSteps((p) => p.filter((s) => s.id !== id)); if (selected === id) setSelected(steps[0].id); };
-  const runSim = () => {
-    const res = steps.map((s, i) => i === 1
-      ? { marketId: s.triggerMarketId, questionId: 2, payoutNumerators: [0n, 0n], voided: true }
-      : { marketId: s.triggerMarketId, questionId: i + 1, payoutNumerators: [1n, 0n], voided: false });
-    setRan(simulate(strat, res));
+  const removeStep = (id) => {
+    const remaining = steps.filter((step) => step.id !== id);
+    setSteps(remaining);
+    setSelected(remaining[0]?.id ?? "");
+    setRan(null);
   };
-  const evFor = (id) => ran?.events.find((e) => e.stepId === id);
-  const tone = (id) => { const e = evFor(id); return !e ? "armed" : e.action === "EXECUTED" ? "triggered" : "skipped"; };
-  const label = (id) => { const e = evFor(id); return !e ? "Armed" : e.action === "EXECUTED" ? "Triggered" : "Skipped"; };
+  const runSimulation = () => {
+    const resolutions = steps.map((step, index) => index === 1
+      ? { marketId: step.triggerMarketId, questionId: 2, payoutNumerators: [0n, 0n], voided: true }
+      : { marketId: step.triggerMarketId, questionId: index + 1, payoutNumerators: [1n, 0n], voided: false });
+    setRan(simulate(strat, resolutions));
+  };
+  const eventFor = (id) => ran?.events.find((event) => event.stepId === id);
 
   return (
-    <section id="build" className="border-t border-line bg-white">
-      <div className="mx-auto max-w-6xl px-8 py-14">
-        <h2 className="text-2xl font-bold tracking-[-0.02em] text-ink">Build your sequence</h2>
-        <p className="mt-1.5 text-[15px] text-sub">Chain bounded orders to real settlements. Simulate before you arm.</p>
-
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-7">
-          {/* chain */}
+    <section id="build" className="product-band">
+      <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-32">
+        <div className="grid items-end gap-10 lg:grid-cols-[.8fr_1.2fr]">
           <div>
-            <div className="text-[13px] font-medium text-faint mb-3.5">Strategy chain</div>
-            {steps.map((s, i) => {
-              const e = evFor(s.id);
-              const dot = e ? (e.action === "EXECUTED" ? "border-ok" : "border-faint") : "border-accent";
-              return (
-                <div key={s.id} className="relative pl-8 mb-3.5">
-                  {i < steps.length - 1 && <div className="absolute left-[9px] top-[30px] -bottom-3.5 w-0.5 bg-line" />}
-                  <div className={`absolute left-0.5 top-[18px] h-4 w-4 rounded-full border-2 bg-white ${dot}`} />
-                  <button onClick={() => setSelected(s.id)}
-                    className={`w-full text-left rounded-xl border bg-white p-3.5 transition ${selected === s.id ? "border-accent ring-4 ring-accentSoft" : "border-line shadow-soft hover:border-accent"}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-[14px] text-ink">{s.label}</span>
-                      <Chip tone={tone(s.id)}>{label(s.id)}</Chip>
-                    </div>
-                    <div className="mt-2 text-[12.5px] text-sub">outcome 0 wins → <b className="text-ink">{s.buyYesOnWin0 ? "Buy YES" : "Buy NO"}</b></div>
-                    <div className="mt-1.5 font-mono text-[11px] text-faint">{fmt(s.price * s.quantity)} · cap {fmt(s.notionalCap)}</div>
-                    {e?.reason && <div className="mt-1.5 text-[11.5px] text-faint">skipped: {e.reason}</div>}
-                    {e?.action === "EXECUTED" && <div className="mt-1.5 text-[11.5px] font-medium text-ok">{KIND_LABEL[e.kind]} placed · {fmt(e.notional)}</div>}
-                  </button>
-                </div>
-              );
-            })}
-            <button onClick={addStep} className="w-full rounded-lg border border-line bg-white px-4 py-2.5 text-[13px] font-medium text-ink transition hover:border-faint">+ Add step</button>
+            <span className="section-tag bg-[#52d8ed]">Builder</span>
+            <h2 className="mt-5 max-w-[520px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Set the rules.<br />See the risk.</h2>
+          </div>
+          <div className="max-w-[520px] lg:justify-self-end">
+            <p className="text-[14px] leading-[1.75] text-[#65616b]">Build one bounded successor at a time. Every value below maps to the same branch and cap rules enforced by the Sequence vault.</p>
+            <div className="mt-5 flex gap-7 text-[10px] font-semibold uppercase tracking-[.13em] text-[#98939d]"><span>Local simulation</span><span>No funds move</span><span>Vault-aligned</span></div>
+          </div>
+        </div>
+
+        <div className="workspace-card mt-16">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#ece9ef] px-6 py-4 lg:px-8">
+            <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-[#8b72e8] shadow-[0_0_0_5px_rgba(139,114,232,.12)]" /><span className="text-[13px] font-bold tracking-[-.02em] text-[#242128]">Untitled sequence</span><span className="text-[10px] text-[#aaa5ae]">Saved locally</span></div>
+            <div className="flex items-center gap-3"><span className="hidden text-[10px] text-[#928d97] sm:block">Shannon testnet</span><button disabled={errors.length > 0} onClick={runSimulation} className="soft-button bg-[#111014] text-white disabled:opacity-35">Preview sequence</button></div>
           </div>
 
-          {/* editor + sim */}
-          <div>
-            {sel && (
-              <div className="rounded-2xl border border-line bg-paper p-5 mb-5">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-semibold text-ink">Edit step</span>
-                  {steps.length > 1 && <button onClick={() => removeStep(sel.id)} className="rounded-lg border border-line bg-white px-3.5 py-2 text-[13px] hover:border-faint">Remove</button>}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Market label"><input className="in" value={sel.label} onChange={(e) => update(sel.id, { label: e.target.value })} /></Field>
-                  <Field label="Trigger market id"><input className="in font-mono" value={sel.triggerMarketId} onChange={(e) => update(sel.id, { triggerMarketId: e.target.value })} /></Field>
-                  <Field label="Limit price ($)"><input className="in font-mono" type="number" value={Number(sel.price)/1e6} onChange={(e) => update(sel.id, { price: BigInt(Math.round(Number(e.target.value)*1e6)) })} /></Field>
-                  <Field label="Size (contracts)"><input className="in font-mono" type="number" value={Number(sel.quantity)} onChange={(e) => update(sel.id, { quantity: BigInt(Math.max(0, Math.round(Number(e.target.value)))) })} /></Field>
-                  <Field label="Step cap ($)"><input className="in font-mono" type="number" value={Number(sel.notionalCap)/1e6} onChange={(e) => update(sel.id, { notionalCap: BigInt(Math.round(Number(e.target.value)*1e6)) })} /></Field>
-                  <Field label="Branch"><select className="in" value={sel.buyYesOnWin0 ? "yes" : "no"} onChange={(e) => update(sel.id, { buyYesOnWin0: e.target.value === "yes" })}><option value="yes">Outcome 0 wins → Buy YES</option><option value="no">Outcome 0 wins → Buy NO</option></select></Field>
-                </div>
-                <div className="mt-3.5 text-[12.5px] text-sub">Order value <span className={`font-mono font-medium ${sel.price*sel.quantity > sel.notionalCap ? "text-red-500" : "text-ink"}`}>{fmt(sel.price*sel.quantity)}</span> of {fmt(sel.notionalCap)} cap</div>
+          <div className="grid lg:grid-cols-[300px_1fr]">
+            <aside className="border-b border-[#ece9ef] bg-[#fbfbfc] p-6 lg:border-b-0 lg:border-r lg:p-8">
+              <div className="mb-6 flex items-center justify-between"><div><div className="micro-label">Sequence path</div><div className="mt-1 text-[11px] text-[#99949e]">{steps.length} bounded actions</div></div><button onClick={addStep} className="grid h-8 w-8 place-items-center rounded-full border border-[#dfdbe3] bg-white text-lg font-light text-[#514c57] transition hover:border-[#8b72e8]">+</button></div>
+              <div className="relative">
+                <div className="absolute bottom-7 left-[11px] top-7 w-px bg-[#ded9e3]" />
+                {steps.map((step, index) => {
+                  const event = eventFor(step.id);
+                  return (
+                    <button key={step.id} onClick={() => setSelected(step.id)} className={`sequence-step group relative mb-3 text-left ${selected === step.id ? "is-selected" : ""}`}>
+                      <span className={`absolute -left-[26px] top-5 grid h-[22px] w-[22px] place-items-center rounded-full border bg-white text-[9px] font-bold ${event?.action === "EXECUTED" ? "border-[#55b58a] text-[#42946f]" : event ? "border-[#d1ccd5] text-[#aaa5ae]" : "border-[#8b72e8] text-[#7056c9]"}`}>{index + 1}</span>
+                      <div className="flex items-start justify-between gap-3"><div><div className="text-[12px] font-bold text-[#252229]">{step.label}</div><div className="mt-2 text-[10px] text-[#817c86]">Outcome 0 → <b className="font-semibold text-[#38343d]">{step.buyYesOnWin0 ? "Buy YES" : "Buy NO"}</b></div></div><span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${event?.action === "EXECUTED" ? "bg-[#55b58a]" : event ? "bg-[#c7c2ca]" : "bg-[#8b72e8]"}`} /></div>
+                      <div className="mt-4 flex justify-between border-t border-[#efecf1] pt-3 font-mono text-[9px] text-[#99949d]"><span>{fmt(step.price * step.quantity)}</span><span>cap {fmt(step.notionalCap)}</span></div>
+                    </button>
+                  );
+                })}
               </div>
-            )}
+              <button onClick={addStep} className="mt-2 w-full rounded-sm border border-dashed border-[#d9d4de] px-4 py-3 text-[10px] font-semibold text-[#746e79] transition hover:border-[#8b72e8] hover:text-[#5e46bb]">+ Add successor</button>
+            </aside>
 
-            <div className="rounded-2xl border border-line bg-white p-5 shadow-soft">
-              <div className="flex items-center justify-between mb-4">
-                <span className="font-semibold text-ink">Simulation</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-[12.5px] text-sub">Vault cap</span>
-                  <input className="in font-mono w-[88px]" type="number" value={Number(maxOutstanding)/1e6} onChange={(e) => setMaxOutstanding(BigInt(Math.round(Number(e.target.value)*1e6)))} />
-                  <button disabled={errors.length>0} onClick={runSim}
-                    className="rounded-lg bg-ink px-4 py-2.5 text-[14px] font-semibold text-white transition enabled:hover:-translate-y-0.5 disabled:opacity-40">Run simulation</button>
-                </div>
-              </div>
-              {errors.length > 0 && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-[12.5px] text-red-600 space-y-0.5">
-                  {errors.map((e, i) => <div key={i}>{e}</div>)}
-                </div>
-              )}
-              {!ran && errors.length === 0 && (
-                <p className="py-3.5 text-[13.5px] leading-relaxed text-sub">Replays your chain against a sample stream — first step settles with a winner, second voids — using the same branch and cap rules the on-chain vault enforces. No funds move.</p>
-              )}
-              {ran && (
-                <div>
-                  <div className="mb-4 flex items-center gap-3">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-line/60">
-                      <div className="h-full bg-accent" style={{ width: Math.min(100, Number(ran.committed)/Number(maxOutstanding)*100) + "%" }} />
+            <div className="p-6 lg:p-8 xl:p-10">
+              <div className="grid gap-8 xl:grid-cols-[1fr_260px]">
+                {selectedStep && (
+                  <div>
+                    <div className="flex items-start justify-between gap-6"><div><div className="micro-label">Edit step {steps.findIndex((step) => step.id === selectedStep.id) + 1}</div><h3 className="mt-2 text-[25px] font-extrabold tracking-[-.04em] text-[#151318]">Define the next action</h3></div>{steps.length > 1 && <button onClick={() => removeStep(selectedStep.id)} className="text-[10px] font-semibold text-[#aaa4ae] transition hover:text-[#ee7d66]">Remove</button>}</div>
+                    <div className="mt-8 grid gap-x-5 gap-y-6 sm:grid-cols-2">
+                      <Field label="Market label"><input className="product-input" value={selectedStep.label} onChange={(event) => update(selectedStep.id, { label: event.target.value })} /></Field>
+                      <Field label="Trigger market ID"><input className="product-input font-mono" value={selectedStep.triggerMarketId} onChange={(event) => update(selectedStep.id, { triggerMarketId: event.target.value })} /></Field>
+                      <Field label="Limit price"><div className="input-prefix"><span>$</span><input type="number" value={Number(selectedStep.price) / 1e6} onChange={(event) => update(selectedStep.id, { price: BigInt(Math.round(Number(event.target.value) * 1e6)) })} /></div></Field>
+                      <Field label="Size"><div className="input-prefix"><input type="number" value={Number(selectedStep.quantity)} onChange={(event) => update(selectedStep.id, { quantity: BigInt(Math.max(0, Math.round(Number(event.target.value)))) })} /><span>contracts</span></div></Field>
+                      <Field label="Step cap"><div className="input-prefix"><span>$</span><input type="number" value={Number(selectedStep.notionalCap) / 1e6} onChange={(event) => update(selectedStep.id, { notionalCap: BigInt(Math.round(Number(event.target.value) * 1e6)) })} /></div></Field>
+                      <Field label="When outcome 0 wins"><select className="product-input" value={selectedStep.buyYesOnWin0 ? "yes" : "no"} onChange={(event) => update(selectedStep.id, { buyYesOnWin0: event.target.value === "yes" })}><option value="yes">Buy YES</option><option value="no">Buy NO</option></select></Field>
                     </div>
-                    <span className="font-mono text-[12px] text-sub">{fmt(ran.committed)} / {fmt(maxOutstanding)}</span>
                   </div>
-                  {ran.events.map((e, i) => (
-                    <div key={i} className={`flex items-center justify-between py-2.5 ${i < ran.events.length-1 ? "border-b border-line" : ""}`}>
-                      <span className="text-[13px] text-ink">{steps.find(s => s.id === e.stepId)?.label || e.stepId}</span>
-                      {e.action === "EXECUTED"
-                        ? <span className="text-[12.5px] font-medium text-ok">{KIND_LABEL[e.kind]} · {fmt(e.notional)}</span>
-                        : <span className="text-[12.5px] text-faint">skipped · {e.reason}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
+                )}
+
+                <aside className="risk-card">
+                  <div className="flex items-center justify-between"><span className="micro-label">Risk preview</span><span className={`rounded-full px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em] ${errors.length ? "bg-[#fff0ec] text-[#e27259]" : "bg-[#eaf7f0] text-[#40906b]"}`}>{errors.length ? "Review" : "Within caps"}</span></div>
+                  <div className="mt-7"><div className="text-[9px] uppercase tracking-[.12em] text-[#a39ea7]">Planned exposure</div><div className="mt-1 text-[30px] font-extrabold tracking-[-.05em] text-[#161419]">{fmt(committed)}</div><div className="mt-5 h-1.5 overflow-hidden rounded-full bg-[#ebe8ee]"><div className="h-full rounded-full bg-[#8b72e8] transition-all" style={{ width: `${exposure}%` }} /></div><div className="mt-2 flex justify-between font-mono text-[8px] text-[#aaa5ae]"><span>committed</span><span>{fmt(maxOutstanding)} cap</span></div></div>
+                  <div className="mt-7 space-y-4 border-t border-[#e7e3ea] pt-5"><RiskRow label="Bankroll" value={fmt(bankroll)} /><RiskRow label="Outstanding cap" value={<input aria-label="Vault cap" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" value={Number(maxOutstanding) / 1e6} onChange={(event) => setMaxOutstanding(BigInt(Math.round(Number(event.target.value) * 1e6)))} />} /><RiskRow label="Cap checks" value={errors.length ? `${errors.length} issue` : "Passing"} good={!errors.length} /></div>
+                </aside>
+              </div>
+
+              <div className={`simulation-strip mt-10 ${ran ? "has-result" : ""}`}>
+                <div><div className="micro-label">Simulation</div><p className="mt-2 max-w-[520px] text-[11px] leading-[1.65] text-[#77717d]">Replay the plan against a controlled resolution stream using the same winner, branch, idempotency, and cap logic as the vault.</p></div>
+                {errors.length > 0 ? <div className="text-[10px] font-semibold text-[#dc6e58]">{errors[0]}</div> : ran ? <div className="flex flex-wrap items-center gap-5">{ran.events.map((event) => <span key={event.stepId} className="flex items-center gap-2 text-[10px] text-[#68636d]"><i className={`h-1.5 w-1.5 rounded-full ${event.action === "EXECUTED" ? "bg-[#55b58a]" : "bg-[#c7c2ca]"}`} />{event.action === "EXECUTED" ? `${KIND_LABEL[event.kind]} · ${fmt(event.notional)}` : `Skipped · ${event.reason}`}</span>)}<button onClick={runSimulation} className="soft-button border border-[#dcd7e1] bg-white text-[#252229]">Run again</button></div> : <button onClick={runSimulation} className="soft-button bg-[#111014] text-white">Run preview</button>}
+              </div>
             </div>
           </div>
         </div>
@@ -141,6 +122,5 @@ export default function Builder() {
   );
 }
 
-function Field({ label, children }) {
-  return <label className="block"><div className="mb-1.5 text-[12px] font-medium text-sub">{label}</div>{children}</label>;
-}
+function Field({ label, children }) { return <label className="block"><span className="mb-2 block text-[9px] font-bold uppercase tracking-[.12em] text-[#9d98a2]">{label}</span>{children}</label>; }
+function RiskRow({ label, value, good }) { return <div className="flex items-center justify-between text-[10px]"><span className="text-[#8d8792]">{label}</span><span className={`font-semibold ${good ? "text-[#40906b]" : "text-[#312d35]"}`}>{value}</span></div>; }
