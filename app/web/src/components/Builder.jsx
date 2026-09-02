@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import Chip from "./Chip.jsx";
-import { simulate, fmt, KIND_LABEL } from "../lib/sim.js";
+import { simulate, fmt, KIND_LABEL } from "../sim.js";
 
 const seed = () => ([
   { id: "step1", label: "BTC · 02SEP 13:45", triggerMarketId: "0x00…f920", pool: "0xPOOL-btc", price: 600000n, quantity: 5n, buyYesOnWin0: true, notionalCap: 4000000n },

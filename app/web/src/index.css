@@ -2,7 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 html { -webkit-font-smoothing: antialiased; }
-body { margin: 0; background: #F7F9FC; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #eef0f2; }
+button, a, input, select { font: inherit; }
+.landing-shell {
+  position: relative;
+  margin: 22px;
+  overflow: hidden;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 86% 45%, rgba(249, 224, 217, .42), transparent 24%),
+    radial-gradient(circle at 72% 80%, rgba(204, 243, 247, .24), transparent 25%),
+    #fff;
+  box-shadow: 0 26px 70px -46px rgba(31, 28, 37, .36);
+}
+.float-card {
+  border-radius: 3px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 24px 50px -28px rgba(44, 38, 55, .35);
+  backdrop-filter: blur(10px);
+  transition: transform .35s ease, box-shadow .35s ease;
+}
+.float-card:hover { transform: translateY(-5px); box-shadow: 0 30px 55px -26px rgba(44,38,55,.42); }
+.eyebrow { font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #9a949f; }
+.card-title { margin-top: 6px; font-size: 15px; line-height: 1.2; font-weight: 750; letter-spacing: -.025em; color: #18161b; }
+.status-dot { margin-top: 3px; height: 7px; width: 7px; border-radius: 999px; box-shadow: 0 0 0 5px rgba(101,219,233,.16); }
+.dotted-coral { background-image: radial-gradient(#ff9b7f 1.3px, transparent 1.3px); background-size: 9px 9px; }
 @layer components {
   .in { @apply w-full box-border rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accentSoft; }
+}
+
+@media (max-width: 1023px) {
+  .landing-shell { margin: 12px; border-radius: 22px; }
+  .sequence-visual { transform: scale(.9); transform-origin: top center; margin-bottom: -50px; }
+}
+
+@media (max-width: 560px) {
+  .landing-shell { margin: 0; border-radius: 0 0 22px 22px; }
+  .sequence-visual { width: 650px; left: 50%; transform: translateX(-50%) scale(.63); transform-origin: top center; margin-bottom: -180px; }
 }

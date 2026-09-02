@@ -6,8 +6,10 @@ export default function App() {
   const toBuild = () => document.getElementById("build")?.scrollIntoView({ behavior: "smooth" });
   return (
     <div className="min-h-screen bg-paper font-sans text-ink">
-      <Nav />
-      <Hero onBuild={toBuild} />
+      <div className="landing-shell">
+        <Nav onBuild={toBuild} />
+        <Hero onBuild={toBuild} />
+      </div>
       <Builder />
     </div>
   );

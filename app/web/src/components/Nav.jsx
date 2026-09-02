@@ -1,19 +1,20 @@
-export default function Nav() {
+export default function Nav({ onBuild }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-paper/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-8 py-4">
-        <div className="flex items-center gap-2.5">
-          <div className="grid h-7 w-7 place-items-center rounded-lg bg-ink">
-            <div className="h-3 w-3 rotate-45 rounded-[50%_50%_50%_0] border-2 border-white" />
+    <header className="relative z-20">
+      <div className="mx-auto flex max-w-[1280px] items-center justify-between px-7 py-7 sm:px-12 lg:px-16">
+        <button onClick={onBuild} className="group flex items-center gap-2.5" aria-label="Go to Sequence builder">
+          <div className="relative h-7 w-6">
+            <span className="absolute left-0 top-0 h-3.5 w-3.5 rounded-full bg-[#50D6ED] transition group-hover:-translate-y-0.5" />
+            <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-[#9B7BFF] transition group-hover:translate-y-0.5" />
           </div>
-          <span className="text-[18px] font-bold text-ink">Sequence</span>
-        </div>
-        <nav className="hidden items-center gap-7 md:flex text-[14px] font-medium text-sub">
-          <a href="#build" className="hover:text-ink">Builder</a>
-          <a href="#" className="hover:text-ink">Strategies</a>
-          <a href="#" className="hover:text-ink">Docs</a>
+          <span className="text-[19px] font-bold tracking-[-0.04em] text-[#141221]">Sequence</span>
+        </button>
+        <nav className="hidden items-center gap-9 text-[12px] font-semibold text-[#585561] md:flex">
+          <a href="#build" className="transition hover:text-black">Builder</a>
+          <a href="#how-it-works" className="transition hover:text-black">How it works</a>
+          <a href="#proof" className="transition hover:text-black">Proof</a>
         </nav>
-        <button className="rounded-lg border border-line bg-white px-4 py-2 text-[13px] font-medium text-ink hover:border-faint">Connect wallet</button>
+        <button className="rounded-full border border-[#18171d] bg-white px-5 py-2 text-[11px] font-semibold text-[#18171d] transition hover:bg-[#18171d] hover:text-white">Connect wallet</button>
       </div>
     </header>
   );
