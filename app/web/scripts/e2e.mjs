@@ -121,7 +121,8 @@ const connect = async (page) => {
   const { context, page } = await newPage({ width: 1440, height: 1000 }, { owner: "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324" });
   await page.goto(base, { waitUntil: "domcontentloaded" });
   await connect(page);
-  await page.waitForTimeout(3500);
+  await page.waitForSelector(".risk-summary", { timeout: 45000 });
+  await page.waitForSelector(".market-tile", { timeout: 45000 });
 
   const dash = await page.locator("#dashboard").innerText();
 
@@ -219,7 +220,7 @@ const connect = async (page) => {
   check("landing has no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);
 
   await connect(page);
-  await page.waitForTimeout(3500);
+  await page.waitForSelector(".risk-summary", { timeout: 45000 });
   overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check("desk has no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);
 
