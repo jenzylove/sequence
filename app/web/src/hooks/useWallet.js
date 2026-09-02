@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const SHANNON_CHAIN_ID = "0xc488";
+import { SHANNON, shannonChain } from "../chain/config.js";
+
+const SHANNON_CHAIN_ID = SHANNON.chainIdHex;
 
 export function useWallet() {
   const [wallets, setWallets] = useState([]);
@@ -74,8 +76,40 @@ export function useWallet() {
     }
   }, [disconnect]);
 
+  // Ask the wallet to move to Shannon, adding the network if it is unknown.
+  const switchNetwork = useCallback(async () => {
+    const provider = activeProvider.current;
+    if (!provider) return false;
+    try {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SHANNON_CHAIN_ID }] });
+      return true;
+    } catch (cause) {
+      if (cause?.code !== 4902) {
+        setError(cause?.code === 4001 ? "Network switch was cancelled." : (cause?.message || "Could not switch network."));
+        return false;
+      }
+      try {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: SHANNON_CHAIN_ID,
+            chainName: shannonChain.name,
+            nativeCurrency: shannonChain.nativeCurrency,
+            rpcUrls: [SHANNON.rpc],
+            blockExplorerUrls: [SHANNON.explorer],
+          }],
+        });
+        return true;
+      } catch (addCause) {
+        setError(addCause?.message || "Could not add Somnia Shannon to this wallet.");
+        return false;
+      }
+    }
+  }, []);
+
   return {
     wallets,
+    provider: activeProvider.current,
     account,
     chainId,
     walletName,
@@ -85,6 +119,7 @@ export function useWallet() {
     onShannon: chainId?.toLowerCase() === SHANNON_CHAIN_ID,
     connect,
     disconnect,
+    switchNetwork,
   };
 }
 

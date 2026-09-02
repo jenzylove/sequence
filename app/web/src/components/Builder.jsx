@@ -1,52 +1,140 @@
-import { useMemo, useState } from "react";
-import { simulate, fmt, KIND_LABEL } from "../sim.js";
+import { useEffect, useMemo, useState } from "react";
+import { simulate, branchPreview, resolutionsFromMarkets, fmt, KIND_LABEL } from "../sim.js";
+import {
+  ORDER_TYPES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
+  validate, notices, notionalOf, toVaultStep, onchainStepId,
+} from "../strategy.js";
+import { armStep } from "../chain/vault.js";
+import { marketLabel } from "../chain/markets.js";
+import { txUrl } from "../chain/config.js";
 
-const seed = () => ([
-  { id: "step1", label: "BTC · 02SEP 13:45", triggerMarketId: "0x00…f920", pool: "0xPOOL-btc", price: 600000n, quantity: 5n, buyYesOnWin0: true, notionalCap: 4000000n },
-  { id: "step2", label: "ETH · 02SEP 14:00", triggerMarketId: "0x00…f921", pool: "0xPOOL-eth", price: 480000n, quantity: 6n, buyYesOnWin0: false, notionalCap: 3500000n },
-]);
-
-export default function Builder() {
-  const [steps, setSteps] = useState(seed);
-  const [maxOutstanding, setMaxOutstanding] = useState(5000000n);
-  const bankroll = 10000000n;
-  const [selected, setSelected] = useState("step1");
+export default function Builder({ markets, vault, wallet, onWallet }) {
+  const [strategy, setStrategy] = useState(() => loadStrategy());
+  const [selected, setSelected] = useState(null);
   const [ran, setRan] = useState(null);
+  const [arming, setArming] = useState(null);
+  const [armResult, setArmResult] = useState(null);
 
-  const strat = useMemo(() => ({ steps, maxOutstanding, bankroll }), [steps, maxOutstanding]);
-  const errors = useMemo(() => {
-    const next = [];
-    if (maxOutstanding > bankroll) next.push("Vault cap is higher than the bankroll.");
-    for (const step of steps) {
-      if (step.price <= 0n || step.quantity <= 0n) next.push(`${step.id}: price and size must be above zero.`);
-      if (step.price * step.quantity > step.notionalCap) next.push(`${step.id}: order value is over its cap.`);
-    }
-    return next;
-  }, [steps, maxOutstanding]);
+  // Seed once from real open markets if nothing is stored yet.
+  useEffect(() => {
+    if (strategy || markets.status !== "ready" || markets.open.length < 2) return;
+    setStrategy(seedFromMarkets(markets.open));
+  }, [strategy, markets.status, markets.open]);
 
-  const selectedStep = steps.find((step) => step.id === selected);
-  const committed = ran?.committed ?? steps.reduce((sum, step) => sum + step.price * step.quantity, 0n);
-  const exposure = Math.min(100, Number(committed) / Number(maxOutstanding) * 100);
-  const update = (id, change) => setSteps((current) => current.map((step) => step.id === id ? { ...step, ...change } : step));
+  useEffect(() => { if (strategy) saveStrategy(strategy); }, [strategy]);
+  useEffect(() => {
+    if (!strategy?.steps.length) return;
+    if (!strategy.steps.some((s) => s.key === selected)) setSelected(strategy.steps[0].key);
+  }, [strategy, selected]);
+
+  const errors = useMemo(() => (strategy ? validate(strategy) : []), [strategy]);
+  const warnings = useMemo(() => (strategy ? notices(strategy) : []), [strategy]);
+  const errorsFor = (key) => errors.filter((e) => e.scope === key);
+  const steps = strategy?.steps ?? [];
+  const selectedStep = steps.find((s) => s.key === selected);
+
+  const committed = ran?.committed ?? steps.reduce((sum, s) => sum + notionalOf(s), 0n);
+  const exposure = strategy && strategy.maxOutstanding > 0n
+    ? Math.min(100, (Number(committed) / Number(strategy.maxOutstanding)) * 100)
+    : 0;
+
+  const patch = (change) => setStrategy((cur) => ({ ...cur, ...change }));
+  const update = (key, change) => {
+    setStrategy((cur) => ({ ...cur, steps: cur.steps.map((s) => (s.key === key ? { ...s, ...change } : s)) }));
+    setRan(null);
+  };
+  const setTrigger = (key, marketId) => {
+    const m = markets.open.find((x) => x.marketId === marketId) || markets.resolved.find((x) => x.marketId === marketId);
+    update(key, { triggerMarketId: marketId, triggerLabel: m?.question || "", triggerExpiry: m?.expiry || null });
+  };
+  const setSuccessor = (key, marketId) => {
+    const m = markets.open.find((x) => x.marketId === marketId);
+    update(key, { successorMarketId: marketId, successorLabel: m?.question || "", successorExpiry: m?.expiry || null, pool: m?.pool || "" });
+  };
   const addStep = () => {
-    const id = `step${steps.length + 1}`;
-    setSteps((current) => [...current, { id, label: "New market", triggerMarketId: "0x00…0000", pool: "0xPOOL", price: 500000n, quantity: 4n, buyYesOnWin0: true, notionalCap: 3000000n }]);
-    setSelected(id);
+    const index = steps.length + 1;
+    const next = makeStep(index, { triggerMarket: markets.open[index - 1], successorMarket: markets.open[index] });
+    setStrategy((cur) => ({ ...cur, steps: [...cur.steps, next] }));
+    setSelected(next.key);
     setRan(null);
   };
-  const removeStep = (id) => {
-    const remaining = steps.filter((step) => step.id !== id);
-    setSteps(remaining);
-    setSelected(remaining[0]?.id ?? "");
+  const removeStep = (key) => {
+    setStrategy((cur) => ({ ...cur, steps: cur.steps.filter((s) => s.key !== key) }));
     setRan(null);
   };
+
+  // Replays the plan against genuine settled DreamDEX markets pulled from the
+  // Somnia indexer, using the vault's own winner, branch and cap rules.
   const runSimulation = () => {
-    const resolutions = steps.map((step, index) => index === 1
-      ? { marketId: step.triggerMarketId, questionId: 2, payoutNumerators: [0n, 0n], voided: true }
-      : { marketId: step.triggerMarketId, questionId: index + 1, payoutNumerators: [1n, 0n], voided: false });
-    setRan(simulate(strat, resolutions));
+    const history = resolutionsFromMarkets(markets.resolved).map((r) => ({ ...r, source: "settled" }));
+    const covered = new Set(history.map((r) => r.marketId.toLowerCase()));
+    // Steps watching a market that has not settled yet still get a projected
+    // pass so the preview shows what the plan does when it does settle.
+    const projected = steps
+      .filter((s) => s.triggerMarketId && !covered.has(s.triggerMarketId.toLowerCase()))
+      .map((s) => ({
+        marketId: s.triggerMarketId, questionId: "projected",
+        payoutNumerators: [10000000n, 0n], voided: false, source: "projected",
+      }));
+    setRan(simulate(strategy, [...history, ...projected]));
+    setArmResult(null);
   };
-  const eventFor = (id) => ran?.events.find((event) => event.stepId === id);
+  const eventFor = (key) => ran?.events.find((e) => e.stepKey === key);
+
+  const owner = vault.state?.owner;
+  const isOwner = vault.isOwner(wallet.account);
+  const canArm = (step) =>
+    wallet.connected && wallet.onShannon && isOwner && !vault.state?.paused &&
+    errors.length === 0 && Boolean(step?.pool && step?.triggerMarketId);
+
+  const armReason = (step) => {
+    if (!wallet.connected) return "Connect a wallet to arm this step.";
+    if (!wallet.onShannon) return "Switch your wallet to Somnia Shannon to arm.";
+    if (!vault.state) return "Reading vault state from Shannon.";
+    if (!isOwner) return `Only the vault owner (${owner ? `${owner.slice(0, 6)}…${owner.slice(-4)}` : "unknown"}) can arm a step.`;
+    if (vault.state.paused) return "The vault is paused; unpause it before arming.";
+    if (errors.length) return errors[0].message;
+    if (!step?.pool || !step?.triggerMarketId) return "Pick a trigger and successor market first.";
+    return "";
+  };
+
+  const doArm = async (step) => {
+    setArmResult(null);
+    setArming(step.key);
+    try {
+      const stepId = onchainStepId(strategy, step);
+      const result = await armStep({
+        provider: wallet.provider, account: wallet.account, stepId, step: toVaultStep(step),
+      });
+      vault.track({
+        stepId, key: step.key, name: step.name, strategy: strategy.name,
+        triggerLabel: step.triggerLabel, successorLabel: step.successorLabel,
+        triggerMarketId: step.triggerMarketId, pool: step.pool,
+        blockNumber: result.blockNumber.toString(), txHash: result.hash, armedAt: Date.now(),
+      });
+      setArmResult({ ok: result.status === "success", hash: result.hash, key: step.key });
+    } catch (cause) {
+      setArmResult({ ok: false, key: step.key, error: cause?.shortMessage || cause?.message || "The transaction was not sent." });
+    } finally {
+      setArming(null);
+    }
+  };
+
+  if (!strategy) {
+    return (
+      <section id="build" className="product-band">
+        <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-32">
+          <span className="section-tag bg-[#52d8ed]">Builder</span>
+          <h2 className="mt-5 max-w-[520px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Set the rules.<br />See the risk.</h2>
+          <div className="workspace-card mt-16 p-10 text-[12px] text-[#77717d]">
+            {markets.status === "error"
+              ? <>Could not reach the Somnia markets indexer. <button onClick={markets.reload} className="font-bold text-[#6f58c2]">Retry</button></>
+              : "Loading live DreamDEX markets from Somnia…"}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="build" className="product-band">
@@ -58,28 +146,45 @@ export default function Builder() {
           </div>
           <div className="max-w-[520px] lg:justify-self-end">
             <p className="text-[14px] leading-[1.75] text-[#65616b]">Build one bounded successor at a time. Every value below maps to the same branch and cap rules enforced by the Sequence vault.</p>
-            <div className="mt-5 flex gap-7 text-[10px] font-semibold uppercase tracking-[.13em] text-[#98939d]"><span>Local simulation</span><span>No funds move</span><span>Vault-aligned</span></div>
+            <div className="mt-5 flex gap-7 text-[10px] font-semibold uppercase tracking-[.13em] text-[#98939d]"><span>Live markets</span><span>Simulate first</span><span>Vault-aligned</span></div>
           </div>
         </div>
 
         <div className="workspace-card mt-16">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#ece9ef] px-6 py-4 lg:px-8">
-            <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-[#8b72e8] shadow-[0_0_0_5px_rgba(139,114,232,.12)]" /><span className="text-[13px] font-bold tracking-[-.02em] text-[#242128]">Untitled sequence</span><span className="text-[10px] text-[#aaa5ae]">Saved locally</span></div>
-            <div className="flex items-center gap-3"><span className="hidden text-[10px] text-[#928d97] sm:block">Shannon testnet</span><button disabled={errors.length > 0} onClick={runSimulation} className="soft-button bg-[#111014] text-white disabled:opacity-35">Preview sequence</button></div>
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-[#8b72e8] shadow-[0_0_0_5px_rgba(139,114,232,.12)]" />
+              <input aria-label="Sequence name" value={strategy.name} onChange={(e) => patch({ name: e.target.value })} className="w-[190px] bg-transparent text-[13px] font-bold tracking-[-.02em] text-[#242128] outline-none" />
+              <span className="text-[10px] text-[#aaa5ae]">Saved locally</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="hidden text-[10px] text-[#928d97] sm:block">{markets.status === "ready" ? `${markets.open.length} live markets` : markets.status === "error" ? "Indexer unreachable" : "Loading markets…"}</span>
+              <button disabled={errors.length > 0} onClick={runSimulation} className="soft-button bg-[#111014] text-white disabled:opacity-35">Preview sequence</button>
+            </div>
           </div>
 
           <div className="grid lg:grid-cols-[300px_1fr]">
             <aside className="border-b border-[#ece9ef] bg-[#fbfbfc] p-6 lg:border-b-0 lg:border-r lg:p-8">
-              <div className="mb-6 flex items-center justify-between"><div><div className="micro-label">Sequence path</div><div className="mt-1 text-[11px] text-[#99949e]">{steps.length} bounded actions</div></div><button aria-label="Add successor step" onClick={addStep} className="grid h-8 w-8 place-items-center rounded-full border border-[#dfdbe3] bg-white text-lg font-light text-[#514c57] transition hover:border-[#8b72e8]">+</button></div>
+              <div className="mb-6 flex items-center justify-between">
+                <div><div className="micro-label">Sequence path</div><div className="mt-1 text-[11px] text-[#99949e]">{steps.length} bounded actions</div></div>
+                <button aria-label="Add successor step" onClick={addStep} className="grid h-8 w-8 place-items-center rounded-full border border-[#dfdbe3] bg-white text-lg font-light text-[#514c57] transition hover:border-[#8b72e8]">+</button>
+              </div>
               <div className="relative">
                 <div className="absolute bottom-7 left-[11px] top-7 w-px bg-[#ded9e3]" />
                 {steps.map((step, index) => {
-                  const event = eventFor(step.id);
+                  const event = eventFor(step.key);
+                  const bad = errorsFor(step.key).length > 0;
                   return (
-                    <button key={step.id} onClick={() => setSelected(step.id)} className={`sequence-step group relative mb-3 text-left ${selected === step.id ? "is-selected" : ""}`}>
-                      <span className={`absolute -left-[26px] top-5 grid h-[22px] w-[22px] place-items-center rounded-full border bg-white text-[9px] font-bold ${event?.action === "EXECUTED" ? "border-[#55b58a] text-[#42946f]" : event ? "border-[#d1ccd5] text-[#aaa5ae]" : "border-[#8b72e8] text-[#7056c9]"}`}>{index + 1}</span>
-                      <div className="flex items-start justify-between gap-3"><div><div className="text-[12px] font-bold text-[#252229]">{step.label}</div><div className="mt-2 text-[10px] text-[#817c86]">Outcome 0 → <b className="font-semibold text-[#38343d]">{step.buyYesOnWin0 ? "Buy YES" : "Buy NO"}</b></div></div><span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${event?.action === "EXECUTED" ? "bg-[#55b58a]" : event ? "bg-[#c7c2ca]" : "bg-[#8b72e8]"}`} /></div>
-                      <div className="mt-4 flex justify-between border-t border-[#efecf1] pt-3 font-mono text-[9px] text-[#99949d]"><span>{fmt(step.price * step.quantity)}</span><span>cap {fmt(step.notionalCap)}</span></div>
+                    <button key={step.key} onClick={() => setSelected(step.key)} className={`sequence-step group relative mb-3 text-left ${selected === step.key ? "is-selected" : ""}`}>
+                      <span className={`absolute -left-[26px] top-5 grid h-[22px] w-[22px] place-items-center rounded-full border bg-white text-[9px] font-bold ${event?.action === "EXECUTED" ? "border-[#55b58a] text-[#42946f]" : event ? "border-[#d1ccd5] text-[#aaa5ae]" : bad ? "border-[#e9b4a6] text-[#d1795f]" : "border-[#8b72e8] text-[#7056c9]"}`}>{index + 1}</span>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[12px] font-bold text-[#252229]">{step.triggerMarketId ? stepHeadline(step) : "Pick a market"}</div>
+                          <div className="mt-2 text-[10px] text-[#817c86]">Outcome 0 → <b className="font-semibold text-[#38343d]">{step.buyYesOnWin0 ? "Buy YES" : "Buy NO"}</b></div>
+                        </div>
+                        <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${event?.action === "EXECUTED" ? "bg-[#55b58a]" : event ? "bg-[#c7c2ca]" : bad ? "bg-[#e28e75]" : "bg-[#8b72e8]"}`} />
+                      </div>
+                      <div className="mt-4 flex justify-between border-t border-[#efecf1] pt-3 font-mono text-[9px] text-[#99949d]"><span>{fmt(notionalOf(step))}</span><span>cap {fmt(step.notionalCap)}</span></div>
                     </button>
                   );
                 })}
@@ -91,28 +196,137 @@ export default function Builder() {
               <div className="grid gap-8 xl:grid-cols-[1fr_260px]">
                 {selectedStep && (
                   <div>
-                    <div className="flex items-start justify-between gap-6"><div><div className="micro-label">Edit step {steps.findIndex((step) => step.id === selectedStep.id) + 1}</div><h3 className="mt-2 text-[25px] font-extrabold tracking-[-.04em] text-[#151318]">Define the next action</h3></div>{steps.length > 1 && <button onClick={() => removeStep(selectedStep.id)} className="text-[10px] font-semibold text-[#aaa4ae] transition hover:text-[#ee7d66]">Remove</button>}</div>
+                    <div className="flex items-start justify-between gap-6">
+                      <div>
+                        <div className="micro-label">Edit step {steps.findIndex((s) => s.key === selectedStep.key) + 1}</div>
+                        <h3 className="mt-2 text-[25px] font-extrabold tracking-[-.04em] text-[#151318]">Define the next action</h3>
+                      </div>
+                      {steps.length > 1 && <button onClick={() => removeStep(selectedStep.key)} className="text-[10px] font-semibold text-[#aaa4ae] transition hover:text-[#ee7d66]">Remove</button>}
+                    </div>
+
                     <div className="mt-8 grid gap-x-5 gap-y-6 sm:grid-cols-2">
-                      <Field label="Market label"><input className="product-input" value={selectedStep.label} onChange={(event) => update(selectedStep.id, { label: event.target.value })} /></Field>
-                      <Field label="Trigger market ID"><input className="product-input font-mono" value={selectedStep.triggerMarketId} onChange={(event) => update(selectedStep.id, { triggerMarketId: event.target.value })} /></Field>
-                      <Field label="Limit price"><div className="input-prefix"><span>$</span><input type="number" value={Number(selectedStep.price) / 1e6} onChange={(event) => update(selectedStep.id, { price: BigInt(Math.round(Number(event.target.value) * 1e6)) })} /></div></Field>
-                      <Field label="Size"><div className="input-prefix"><input type="number" value={Number(selectedStep.quantity)} onChange={(event) => update(selectedStep.id, { quantity: BigInt(Math.max(0, Math.round(Number(event.target.value)))) })} /><span>contracts</span></div></Field>
-                      <Field label="Step cap"><div className="input-prefix"><span>$</span><input type="number" value={Number(selectedStep.notionalCap) / 1e6} onChange={(event) => update(selectedStep.id, { notionalCap: BigInt(Math.round(Number(event.target.value) * 1e6)) })} /></div></Field>
-                      <Field label="When outcome 0 wins"><select className="product-input" value={selectedStep.buyYesOnWin0 ? "yes" : "no"} onChange={(event) => update(selectedStep.id, { buyYesOnWin0: event.target.value === "yes" })}><option value="yes">Buy YES</option><option value="no">Buy NO</option></select></Field>
+                      <Field label="Watch this market settle">
+                        <select className="product-input" value={selectedStep.triggerMarketId} onChange={(e) => setTrigger(selectedStep.key, e.target.value)}>
+                          <option value="">Select a live market…</option>
+                          {markets.open.map((m) => <option key={m.marketId} value={m.marketId}>{marketLabel(m)} · {m.question}</option>)}
+                          {selectedStep.triggerMarketId && !markets.open.some((m) => m.marketId === selectedStep.triggerMarketId) &&
+                            <option value={selectedStep.triggerMarketId}>{selectedStep.triggerLabel || "Previously selected market"}</option>}
+                        </select>
+                      </Field>
+                      <Field label="Then place into">
+                        <select className="product-input" value={selectedStep.successorMarketId} onChange={(e) => setSuccessor(selectedStep.key, e.target.value)}>
+                          <option value="">Select a successor market…</option>
+                          {markets.open.map((m) => <option key={m.marketId} value={m.marketId}>{marketLabel(m)} · {m.question}</option>)}
+                          {selectedStep.successorMarketId && !markets.open.some((m) => m.marketId === selectedStep.successorMarketId) &&
+                            <option value={selectedStep.successorMarketId}>{selectedStep.successorLabel || "Previously selected market"}</option>}
+                        </select>
+                      </Field>
+                      <Field label="Limit price"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.price) / 1e6} onChange={(e) => update(selectedStep.key, { price: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
+                      <Field label="Size"><div className="input-prefix"><input type="number" value={Number(selectedStep.quantity)} onChange={(e) => update(selectedStep.key, { quantity: BigInt(Math.max(0, Math.round(Number(e.target.value)))) })} /><span>contracts</span></div></Field>
+                      <Field label="Step cap"><div className="input-prefix"><span>$</span><input type="number" step="0.01" value={Number(selectedStep.notionalCap) / 1e6} onChange={(e) => update(selectedStep.key, { notionalCap: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} /></div></Field>
+                      <Field label="When outcome 0 wins">
+                        <select className="product-input" value={selectedStep.buyYesOnWin0 ? "yes" : "no"} onChange={(e) => update(selectedStep.key, { buyYesOnWin0: e.target.value === "yes" })}>
+                          <option value="yes">Buy YES</option><option value="no">Buy NO</option>
+                        </select>
+                      </Field>
+                      <Field label="Order type">
+                        <select className="product-input" value={selectedStep.orderType} onChange={(e) => update(selectedStep.key, { orderType: Number(e.target.value) })}>
+                          {ORDER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Successor pool">
+                        <div className="product-input truncate font-mono text-[10px] text-[#77717d]">{selectedStep.pool || "Set by the successor market"}</div>
+                      </Field>
+                    </div>
+
+                    <div className="mt-8 rounded-sm border border-[#ece9ef] bg-[#fbfbfc] p-5">
+                      <div className="micro-label">What each outcome does</div>
+                      <div className="mt-4 space-y-2.5">
+                        {branchPreview(strategy, selectedStep).map((row) => (
+                          <div key={row.win} className="flex items-center justify-between text-[10px]">
+                            <span className="text-[#827d87]">{row.win === 255 ? "Market voided" : `Outcome ${row.win} wins`}</span>
+                            <span className={`font-semibold ${row.action === "EXECUTED" ? "text-[#40906b]" : "text-[#8d8792]"}`}>
+                              {row.action === "EXECUTED" ? `${KIND_LABEL[row.kind]} · ${fmt(row.notional)}` : `Skip · ${row.reason}`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-8 rounded-sm border border-[#ece9ef] p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                          <div className="micro-label">Arm on Shannon</div>
+                          <p className="mt-2 max-w-[360px] text-[10px] leading-[1.65] text-[#77717d]">
+                            Sends a real <span className="font-mono">armStep</span> transaction to the Sequence vault. You approve it in your wallet, and the vault enforces both caps itself.
+                          </p>
+                        </div>
+                        {canArm(selectedStep)
+                          ? <button onClick={() => doArm(selectedStep)} disabled={arming === selectedStep.key} className="soft-button bg-[#111014] text-white disabled:opacity-50">{arming === selectedStep.key ? "Confirm in wallet…" : "Arm this step"}</button>
+                          : <button onClick={wallet.connected ? undefined : onWallet} disabled={wallet.connected} className="soft-button border border-[#dcd7e1] bg-white text-[#252229] disabled:opacity-45">{wallet.connected ? "Cannot arm yet" : "Connect wallet"}</button>}
+                      </div>
+                      {!canArm(selectedStep) && <p className="mt-3 text-[10px] font-semibold text-[#a8a2ad]">{armReason(selectedStep)}</p>}
+                      {armResult?.key === selectedStep.key && (
+                        armResult.ok
+                          ? <p className="mt-3 text-[10px] font-semibold text-[#40906b]">Step armed onchain. <a className="text-[#6f58c2]" href={txUrl(armResult.hash)} target="_blank" rel="noreferrer">View transaction ↗</a></p>
+                          : <p className="mt-3 text-[10px] font-semibold text-[#dc6e58]" role="alert">{armResult.error || "The transaction did not succeed."}</p>
+                      )}
                     </div>
                   </div>
                 )}
 
                 <aside className="risk-card">
-                  <div className="flex items-center justify-between"><span className="micro-label">Risk preview</span><span className={`rounded-full px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em] ${errors.length ? "bg-[#fff0ec] text-[#e27259]" : "bg-[#eaf7f0] text-[#40906b]"}`}>{errors.length ? "Review" : "Within caps"}</span></div>
-                  <div className="mt-7"><div className="text-[9px] uppercase tracking-[.12em] text-[#a39ea7]">Planned exposure</div><div className="mt-1 text-[30px] font-extrabold tracking-[-.05em] text-[#161419]">{fmt(committed)}</div><div className="mt-5 h-1.5 overflow-hidden rounded-full bg-[#ebe8ee]"><div className="h-full rounded-full bg-[#8b72e8] transition-all" style={{ width: `${exposure}%` }} /></div><div className="mt-2 flex justify-between font-mono text-[8px] text-[#aaa5ae]"><span>committed</span><span>{fmt(maxOutstanding)} cap</span></div></div>
-                  <div className="mt-7 space-y-4 border-t border-[#e7e3ea] pt-5"><RiskRow label="Bankroll" value={fmt(bankroll)} /><RiskRow label="Outstanding cap" value={<input aria-label="Vault cap" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" value={Number(maxOutstanding) / 1e6} onChange={(event) => setMaxOutstanding(BigInt(Math.round(Number(event.target.value) * 1e6)))} />} /><RiskRow label="Cap checks" value={errors.length ? `${errors.length} issue` : "Passing"} good={!errors.length} /></div>
+                  <div className="flex items-center justify-between">
+                    <span className="micro-label">Risk preview</span>
+                    <span className={`rounded-full px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em] ${errors.length ? "bg-[#fff0ec] text-[#e27259]" : warnings.length ? "bg-[#fff8f0] text-[#b8823f]" : "bg-[#eaf7f0] text-[#40906b]"}`}>{errors.length ? "Review" : warnings.length ? "Cap will bind" : "Within caps"}</span>
+                  </div>
+                  <div className="mt-7">
+                    <div className="text-[9px] uppercase tracking-[.12em] text-[#a39ea7]">Planned exposure</div>
+                    <div className="mt-1 text-[30px] font-extrabold tracking-[-.05em] text-[#161419]">{fmt(committed)}</div>
+                    <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-[#ebe8ee]"><div className="h-full rounded-full bg-[#8b72e8] transition-all" style={{ width: `${exposure}%` }} /></div>
+                    <div className="mt-2 flex justify-between font-mono text-[8px] text-[#aaa5ae]"><span>committed</span><span>{fmt(strategy.maxOutstanding)} cap</span></div>
+                  </div>
+                  <div className="mt-7 space-y-4 border-t border-[#e7e3ea] pt-5">
+                    <RiskRow label="Bankroll" value={<input aria-label="Bankroll" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.bankroll) / 1e6} onChange={(e) => patch({ bankroll: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
+                    <RiskRow label="Outstanding cap" value={<input aria-label="Vault cap" className="w-[62px] bg-transparent text-right font-mono outline-none" type="number" step="0.01" value={Number(strategy.maxOutstanding) / 1e6} onChange={(e) => patch({ maxOutstanding: BigInt(Math.max(0, Math.round(Number(e.target.value) * 1e6))) })} />} />
+                    <RiskRow label="Cap checks" value={errors.length ? `${errors.length} issue${errors.length > 1 ? "s" : ""}` : warnings.length ? "Cap will bind" : "Passing"} good={!errors.length && !warnings.length} />
+                    <RiskRow label="Vault cap onchain" value={vault.state ? fmt(vault.state.maxOutstanding) : "reading…"} />
+                  </div>
+                  {errors.length > 0 && (
+                    <ul className="mt-5 space-y-2 border-t border-[#e7e3ea] pt-5 text-[9px] leading-[1.5] text-[#c47b64]">
+                      {errors.slice(0, 4).map((e, i) => <li key={i}>{e.message}</li>)}
+                    </ul>
+                  )}
+                  {errors.length === 0 && warnings.length > 0 && (
+                    <ul className="mt-5 space-y-2 border-t border-[#e7e3ea] pt-5 text-[9px] leading-[1.5] text-[#a8834f]">
+                      {warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  )}
                 </aside>
               </div>
 
               <div className={`simulation-strip mt-10 ${ran ? "has-result" : ""}`}>
-                <div><div className="micro-label">Simulation</div><p className="mt-2 max-w-[520px] text-[11px] leading-[1.65] text-[#77717d]">Replay the plan against a controlled resolution stream using the same winner, branch, idempotency, and cap logic as the vault.</p></div>
-                {errors.length > 0 ? <div className="text-[10px] font-semibold text-[#dc6e58]">{errors[0]}</div> : ran ? <div className="flex flex-wrap items-center gap-5">{ran.events.map((event) => <span key={event.stepId} className="flex items-center gap-2 text-[10px] text-[#68636d]"><i className={`h-1.5 w-1.5 rounded-full ${event.action === "EXECUTED" ? "bg-[#55b58a]" : "bg-[#c7c2ca]"}`} />{event.action === "EXECUTED" ? `${KIND_LABEL[event.kind]} · ${fmt(event.notional)}` : `Skipped · ${event.reason}`}</span>)}<button onClick={runSimulation} className="soft-button border border-[#dcd7e1] bg-white text-[#252229]">Run again</button></div> : <button onClick={runSimulation} className="soft-button bg-[#111014] text-white">Run preview</button>}
+                <div>
+                  <div className="micro-label">Simulation</div>
+                  <p className="mt-2 max-w-[520px] text-[11px] leading-[1.65] text-[#77717d]">
+                    Replays the plan against genuine settled DreamDEX markets from the Somnia indexer, using the same winner, branch, idempotency and cap logic as the vault. No funds move.
+                  </p>
+                </div>
+                {errors.length > 0
+                  ? <div className="text-[10px] font-semibold text-[#dc6e58]">{errors[0].message}</div>
+                  : ran
+                    ? <div className="flex flex-wrap items-center gap-5">
+                        {ran.events.length === 0 && <span className="text-[10px] text-[#8d8792]">No settled market in the recent window matches these steps yet.</span>}
+                        {ran.events.map((event, i) => (
+                          <span key={`${event.stepKey}-${i}`} className="flex items-center gap-2 text-[10px] text-[#68636d]">
+                            <i className={`h-1.5 w-1.5 rounded-full ${event.action === "EXECUTED" ? "bg-[#55b58a]" : "bg-[#c7c2ca]"}`} />
+                            {event.action === "EXECUTED" ? `${KIND_LABEL[event.kind]} · ${fmt(event.notional)}` : `Skipped · ${event.reason}`}
+                            <b className="text-[8px] font-bold uppercase tracking-[.1em] text-[#aaa5ae]">{event.source === "settled" ? "settled" : "projected"}</b>
+                          </span>
+                        ))}
+                        <button onClick={runSimulation} className="soft-button border border-[#dcd7e1] bg-white text-[#252229]">Run again</button>
+                      </div>
+                    : <button onClick={runSimulation} className="soft-button bg-[#111014] text-white">Run preview</button>}
               </div>
             </div>
           </div>
@@ -120,6 +334,12 @@ export default function Builder() {
       </div>
     </section>
   );
+}
+
+function stepHeadline(step) {
+  const when = step.triggerExpiry ? new Date(step.triggerExpiry * 1000).toUTCString().slice(17, 22) : "";
+  const asset = /BTC/i.test(step.triggerLabel) ? "BTC" : /ETH/i.test(step.triggerLabel) ? "ETH" : "Market";
+  return when ? `${asset} · ${when} UTC` : asset;
 }
 
 function Field({ label, children }) { return <label className="block"><span className="mb-2 block text-[9px] font-bold uppercase tracking-[.12em] text-[#9d98a2]">{label}</span>{children}</label>; }

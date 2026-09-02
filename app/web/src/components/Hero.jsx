@@ -1,4 +1,4 @@
-export default function Hero({ onBuild }) {
+export default function Hero({ onBuild, onOperations }) {
   return (
     <main className="relative overflow-hidden">
       <div className="mx-auto grid min-h-[670px] max-w-[1280px] grid-cols-1 items-center gap-12 px-7 pb-20 pt-12 sm:px-12 lg:grid-cols-[0.82fr_1.18fr] lg:px-16 lg:pb-24 lg:pt-10">
@@ -14,7 +14,7 @@ export default function Hero({ onBuild }) {
             <button onClick={onBuild} className="rounded-full bg-[#09090b] px-7 py-3.5 text-[12px] font-semibold text-white shadow-[0_14px_30px_-16px_rgba(0,0,0,.65)] transition hover:-translate-y-0.5 hover:bg-[#29272d]">
               Build your sequence
             </button>
-            <span className="hidden text-[11px] leading-4 text-[#918d96] sm:block">Simulate first.<br />Funds stay put.</span>
+            <button onClick={onOperations} className="hidden text-left text-[11px] leading-4 text-[#918d96] transition hover:text-[#28252c] sm:block">Simulate first.<br />See the live vault.</button>
           </div>
           <p className="mt-12 font-mono text-[10px] uppercase tracking-[0.12em] text-[#9d99a1]">
             DreamDEX → Somnia Reactivity → bounded order

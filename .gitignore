@@ -14,3 +14,4 @@ node_modules/
 app/node_modules/
 app/web/node_modules/
 app/web/dist/
+qa/
