@@ -1,19 +1,23 @@
-out/
-cache/
-lib/
-.env
-node_modules/
-broadcast/
-.env
+# Foundry build output. Anchored to the repo root: an unanchored "lib/" also
+# matches nested source directories such as app/web/src/lib, which silently
+# excluded real application code.
+/out/
+/cache/
+/lib/
+/broadcast/
 
+# Secrets and deployment artefacts
+.env
 .handler_address
 .target_market
-*.out
-node_modules/
 .vault_address
-app/node_modules/
-app/web/node_modules/
+/*.out
+
+# Dependencies and build output
+node_modules/
 app/web/dist/
+
+# Local QA captures
 qa/
 
 # Local design/QA capture artefacts. Not used by the app or the submission.
