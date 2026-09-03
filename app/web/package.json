@@ -12,7 +12,8 @@
     "verify:clone": "node scripts/verify-clean-clone.mjs",
     "journey": "node scripts/journey.mjs",
     "repair": "node scripts/repair-control-bytes.mjs",
-    "audit": "node scripts/audit-ia.mjs"
+    "audit": "node scripts/audit-ia.mjs",
+    "verify:three": "node scripts/verify-three.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
