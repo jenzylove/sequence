@@ -10,7 +10,7 @@ export const SHANNON = {
   oracleHub: "0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b",
   binaryModule: "0x3ecC694Cef705358864a646142ac17A90E29e388",
   testUsdc: "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
-  vault: "0xA9A9AA93BE8f62723D55dA5Ba100F9803325Bf62",
+  vault: "0x7734caB7743Dc413C4D7C74932DA9ee0c29057A1",
   nativeCurrency: { name: "Somnia", symbol: "STT", decimals: 18 },
 };
 
