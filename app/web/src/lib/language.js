@@ -47,8 +47,21 @@ export const ORDER_TYPE_COPY = {
 
 export const SIDE_COPY = { 0: "Buy YES", 1: "Sell YES", 2: "Buy NO", 3: "Sell NO" };
 
+// The indexer reports window lengths slightly off the round number (298 rather
+// than 300, 898 rather than 900), so they are snapped to the cadence a trader
+// would name before being shown or grouped on.
+const BUCKETS = [60, 300, 900, 3600, 14400, 86400];
+export function normaliseInterval(seconds) {
+  if (!seconds) return null;
+  let best = BUCKETS[0];
+  for (const b of BUCKETS) if (Math.abs(b - seconds) < Math.abs(best - seconds)) best = b;
+  // Only snap when it is genuinely close; otherwise report what was given.
+  return Math.abs(best - seconds) <= Math.max(5, best * 0.05) ? best : seconds;
+}
+
 // How long a market's window runs, said the way a trader says it.
-export function intervalLabel(seconds) {
+export function intervalLabel(rawSeconds) {
+  const seconds = normaliseInterval(rawSeconds);
   if (!seconds) return "";
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;

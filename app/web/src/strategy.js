@@ -3,6 +3,7 @@
 // object that gets encoded into armStep, and validates by the same rules the
 // vault enforces on chain.
 import { stepIdFor } from "./chain/vault.js";
+import { normaliseInterval } from "./lib/language.js";
 
 // What the account does when an outcome wins. The buy values are the pool's own
 // side codes, so nothing is translated before it reaches the contract; STOP is
@@ -62,34 +63,40 @@ export function emptyStrategy() {
   return { name: "Untitled sequence", bankroll: 10000000n, maxOutstanding: 5000000n, steps: [] };
 }
 
-// Seed from real open markets: chain consecutive windows of the SAME market,
-// so a step watching BTC 15m trades into the next BTC 15m rather than into
-// whatever happened to be next in the list.
+// The window a step should trade into once its watched market settles: the next
+// open window of the same asset, preferring the same cadence. Only one window
+// per series is open at a time, so the same-cadence match usually does not
+// exist and the next window of that asset is the honest choice.
+export function nextWindowFor(markets, after) {
+  if (!after) return null;
+  const later = markets
+    .filter((m) => m.pool && m.marketId !== after.marketId && (m.expiry || 0) > (after.expiry || 0))
+    .sort((a, b) => (a.expiry || 0) - (b.expiry || 0));
+  const cadence = normaliseInterval(after.intervalSec);
+  return later.find((m) => m.asset === after.asset && normaliseInterval(m.intervalSec) === cadence)
+    || later.find((m) => m.asset === after.asset)
+    || later[0]
+    || null;
+}
+
+// Seed from real open markets: watch the soonest window that has something to
+// roll into, and trade into that. Never returns a stepless strategy while two
+// markets are open, because a builder with no step is a dead end.
 export function seedFromMarkets(markets) {
   const strat = emptyStrategy();
-  if (!markets || markets.length < 2) return strat;
+  const open = (markets || []).filter((m) => m.pool && m.marketId).sort((a, b) => (a.expiry || 0) - (b.expiry || 0));
+  if (open.length < 2) return strat;
 
-  // Group by the actual series a trader thinks in: asset plus window length.
-  const series = {};
-  for (const m of markets) {
-    if (!m.asset || !m.intervalSec || !m.pool) continue;
-    (series[`${m.asset}-${m.intervalSec}`] ||= []).push(m);
+  let trigger = null;
+  let successor = null;
+  for (const candidate of open) {
+    const next = nextWindowFor(open, candidate);
+    if (next) { trigger = candidate; successor = next; break; }
   }
-  for (const list of Object.values(series)) list.sort((a, b) => (a.expiry || 0) - (b.expiry || 0));
+  if (!trigger || !successor) return strat;
 
-  // Prefer a series with enough future windows to chain, and a sane cadence:
-  // long enough that a trader can react, short enough to demo.
-  const usable = Object.entries(series)
-    .filter(([, list]) => list.length >= 2)
-    .sort((a, b) => {
-      const pref = (s) => Math.abs((s.split("-")[1] | 0) - 900);
-      return pref(a[0]) - pref(b[0]);
-    });
-  const chain = usable[0]?.[1];
-  if (!chain) return strat;
-
-  strat.steps = [makeStep(1, { triggerMarket: chain[0], successorMarket: chain[1] })];
-  strat.name = `${chain[0].asset} rolling sequence`;
+  strat.steps = [makeStep(1, { triggerMarket: trigger, successorMarket: successor })];
+  strat.name = `${trigger.asset || "Rolling"} sequence`;
   return strat;
 }
 

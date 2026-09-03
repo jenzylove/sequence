@@ -13,7 +13,7 @@ const EXAMPLES = [
 // put it live. The translation is deterministic and grounded in markets that are
 // actually open: it will refuse rather than invent one, and it never takes a view
 // on where price is going.
-export default function CommandBar({ markets, vault, onReview, onOpenBuilder }) {
+export default function CommandBar({ markets, vault, onUse }) {
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
   const [answer, setAnswer] = useState(null);
@@ -45,13 +45,12 @@ export default function CommandBar({ markets, vault, onReview, onOpenBuilder }) 
   const planned = strategy ? strategy.steps.reduce((sum, s) => sum + notionalOf(s), 0n) : 0n;
 
   return (
-    <div className="command-card">
+    <div className="command-card mt-8">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <div className="micro-label">New sequence</div>
-          <h3 className="mt-2 text-[22px] font-extrabold tracking-[-.04em] text-[#151318]">What should happen next?</h3>
+          <div className="micro-label">Quick start</div>
+          <h3 className="mt-2 text-[18px] font-extrabold tracking-[-.04em] text-[#151318]">Describe it, or set it up by hand below</h3>
         </div>
-        <button onClick={onOpenBuilder} className="text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Build it step by step</button>
       </div>
 
       <form
@@ -126,13 +125,13 @@ export default function CommandBar({ markets, vault, onReview, onOpenBuilder }) 
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
               disabled={errors.length > 0}
-              onClick={() => onReview(strategy)}
+              onClick={() => { onUse(strategy); setResult(null); setText(""); }}
               className="soft-button bg-[#111014] text-white disabled:opacity-35"
             >
-              Review and activate
+              Use this
             </button>
             <button onClick={() => { setResult(null); setText(""); }} className="text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Start over</button>
-            <span className="text-[10px] text-[#a19ca5]">Nothing is live until you approve it in your wallet.</span>
+            <span className="text-[10px] text-[#a19ca5]">This fills in the form below. Nothing is live until you activate it.</span>
           </div>
         </div>
       )}

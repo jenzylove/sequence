@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { shortAccount } from "../hooks/useWallet.js";
 
-export default function WalletDialog({ open, wallet, reason = null, onClose }) {
+export default function WalletDialog({ open, wallet, reason = null, onConnected, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (event) => event.key === "Escape" && onClose();
@@ -32,7 +32,7 @@ export default function WalletDialog({ open, wallet, reason = null, onClose }) {
           </div>
         ) : <div className="mt-7 space-y-2">
           {wallet.wallets.map((item) => (
-            <button key={item.info.uuid} disabled={wallet.status === "connecting"} onClick={async () => (await wallet.connect(item)) && onClose()} className="wallet-option">
+            <button key={item.info.uuid} disabled={wallet.status === "connecting"} onClick={async () => { if (await wallet.connect(item)) { onConnected?.(); onClose(); } }} className="wallet-option">
               <span className="flex items-center gap-3">
                 {item.info.icon ? <img src={item.info.icon} alt="" className="h-8 w-8 rounded-lg" /> : <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#efedff] text-[11px] font-extrabold text-[#6f58c2]">{item.info.name.slice(0, 1)}</span>}
                 <span><strong className="block text-[12px] text-[#28252c]">{item.info.name}</strong><small className="mt-0.5 block text-[9px] text-[#aaa5ae]">{item.info.rdns || "Injected wallet"}</small></span>

@@ -20,7 +20,7 @@ const STEPS = [
   },
 ];
 
-export default function HowItWorks({ onStart }) {
+export default function HowItWorks() {
   return (
     <section id="how-it-works" className="explain-band">
       <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-28">
@@ -46,14 +46,9 @@ export default function HowItWorks({ onStart }) {
           ))}
         </ol>
 
-        <div className="mt-12 flex flex-wrap items-center gap-5">
-          <button onClick={onStart} className="rounded-full bg-[#09090b] px-7 py-3.5 text-[12px] font-semibold text-white shadow-[0_14px_30px_-16px_rgba(0,0,0,.65)] transition hover:-translate-y-0.5 hover:bg-[#29272d]">
-            Build your sequence
-          </button>
-          <span className="text-[11px] leading-[1.6] text-[#918d96]">
-            Runs on test markets. You approve every trade rule in your own wallet.
-          </span>
-        </div>
+        <p className="mt-12 text-[11px] leading-[1.6] text-[#918d96]">
+          Runs on test markets. You approve every rule in your own wallet, and nothing moves until you do.
+        </p>
       </div>
     </section>
   );

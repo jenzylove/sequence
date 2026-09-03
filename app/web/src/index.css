@@ -244,3 +244,26 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 .branch-row.is-stop { border-left-color: #c7c2ca; background: #fbfbfc; }
 .branch-row.is-stop .branch-select { color: #77717d; }
+
+/* ---- Product shell + screen headers ------------------------------------- */
+.app-shell {
+  position: relative; margin: 22px 22px 0; border-radius: 28px 28px 0 0;
+  background: #fff; box-shadow: 0 26px 70px -46px rgba(31, 28, 37, .28);
+}
+.screen-header { border-bottom: 1px solid #ece9ef; padding-bottom: 26px; }
+.mobile-nav {
+  display: flex; gap: 8px; overflow-x: auto;
+  padding: 0 28px 16px; margin-top: -8px;
+  scrollbar-width: none;
+}
+.mobile-nav::-webkit-scrollbar { display: none; }
+.mobile-nav-item {
+  flex: none; border: 1px solid #e4e0ea; border-radius: 999px; background: #fff;
+  padding: 7px 14px; font-size: 11px; font-weight: 700; color: #6c6771;
+  transition: border-color .2s ease, color .2s ease, background .2s ease;
+}
+.mobile-nav-item.is-active { border-color: #8b72e8; background: #f4f1ff; color: #5e46bb; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

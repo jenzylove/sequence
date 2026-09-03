@@ -11,125 +11,127 @@ import { useWallet } from "./hooks/useWallet.js";
 import { useMarkets } from "./hooks/useMarkets.js";
 import { useVault } from "./hooks/useVault.js";
 
-// Two worlds, kept strictly apart.
+// Four screens, exactly one on at a time.
 //
-// Disconnected is a landing page and nothing else: what the product does, how it
-// works, and one way in. No account state, no balances, no contract addresses.
+//   landing  the public page. Always reachable, connected or not, via the logo.
+//   home     Your sequences: what is live, drafted and finished.
+//   build    the creation flow, and the only place a sequence is made.
+//   details  the raw onchain record.
 //
-// Connected is the product. "Build your sequence" goes straight to the builder
-// rather than parking the user on a dashboard first; the home view with their
-// drafts and live sequences is one click away in the nav.
+// Navigation rules that came out of walking this as a new trader:
+//   - the logo always returns to the landing page and never anywhere else
+//   - connecting a wallet never moves the user on its own; only a gated action
+//     they asked for does, and then only to the screen that action implied
+//   - leaving the builder returns to home, which is where sequences live
+const VIEWS = ["landing", "home", "build", "details"];
+
 export default function App() {
+  const [view, setView] = useState("landing");
   const [walletOpen, setWalletOpen] = useState(false);
   const [walletReason, setWalletReason] = useState(null);
-  const [view, setView] = useState("home");
+  const [pendingView, setPendingView] = useState(null);
   const [editing, setEditing] = useState(null);
-  const [intent, setIntent] = useState(null);
 
   const wallet = useWallet();
   const markets = useMarkets();
   const vault = useVault();
   const connected = wallet.connected;
 
-  const askToConnect = (reason) => { setWalletReason(reason); setWalletOpen(true); };
+  const show = (next) => {
+    if (!VIEWS.includes(next)) return;
+    setView(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-  // "Build your sequence" is the product's front door. Disconnected, it asks for
-  // a wallet and remembers why, so connecting drops the user straight into the
-  // builder instead of back where they started.
+  // Asking for a wallet always records WHY. Without a reason the user simply
+  // stays where they are once connected.
+  const askToConnect = (reason = null, thenGo = null) => {
+    setWalletReason(reason);
+    setPendingView(thenGo);
+    setWalletOpen(true);
+  };
+
   const startBuilding = (draft = null) => {
     setEditing(draft);
     if (!connected) {
-      setIntent("build");
-      askToConnect("Connect a wallet to build a sequence. You approve every rule yourself, and nothing moves until you do.");
+      askToConnect("Connect a wallet to build a sequence. You approve every rule yourself, and nothing moves until you do.", "build");
       return;
     }
-    setView("build");
-    window.setTimeout(() => document.getElementById("build")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    show("build");
   };
 
-  useEffect(() => {
-    if (!connected) { setView("home"); return; }
-    if (intent === "build") {
-      setIntent(null);
-      setView("build");
-      window.setTimeout(() => document.getElementById("build")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
-    }
-  }, [connected, intent]);
+  // Disconnecting drops back to the public page, since nothing else can render.
+  useEffect(() => { if (!connected && view !== "landing") show("landing"); }, [connected, view]);
 
-  const go = (next) => {
-    setView(next);
-    const anchor = next === "build" ? "build" : next === "details" ? "onchain" : "dashboard";
-    window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-  };
+  const onLanding = view === "landing";
 
   return (
     <div id="top" className="min-h-screen bg-paper font-sans text-ink">
-      <div className="landing-shell">
+      <div className={onLanding ? "landing-shell" : "app-shell"}>
         <Nav
           connected={connected}
           wallet={wallet}
           view={view}
-          onWallet={() => askToConnect(null)}
-          onHome={() => (connected ? go("home") : document.getElementById("top")?.scrollIntoView({ behavior: "smooth" }))}
+          onLanding={() => show("landing")}
+          onHome={() => (connected ? show("home") : askToConnect("Connect a wallet to see your sequences.", "home"))}
           onBuild={() => startBuilding()}
-          onDetails={() => go("details")}
+          onDetails={() => (connected ? show("details") : askToConnect("Connect a wallet to see the onchain record.", "details"))}
+          onWallet={() => askToConnect(null, null)}
         />
-        {!connected && (
-          <Hero
-            onBuild={() => startBuilding()}
-            onOperations={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}
-          />
-        )}
+        {onLanding && <Hero onBuild={() => startBuilding()} onOperations={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} />}
       </div>
 
-      {/* Public: explanation only. No account state reaches this surface. */}
-      {!connected && <HowItWorks onStart={() => startBuilding()} />}
+      {onLanding && <HowItWorks />}
 
-      {connected && view === "home" && (
+      {view === "home" && (
         <Dashboard
           markets={markets}
           vault={vault}
           wallet={wallet}
-          onOpenBuilder={() => startBuilding()}
+          onNewSequence={() => startBuilding()}
           onEditDraft={(draft) => startBuilding(draft)}
-          onOpenDetails={() => go("details")}
+          onOpenDetails={() => show("details")}
         />
       )}
 
-      {connected && view === "build" && (
+      {view === "build" && (
         <Builder
           markets={markets}
           vault={vault}
           wallet={wallet}
           initialDraft={editing}
-          onWallet={() => askToConnect(null)}
-          onClose={() => go("home")}
-          onActivated={() => go("home")}
+          onWallet={() => askToConnect(null, null)}
+          onExit={() => show("home")}
+          onActivated={() => show("home")}
         />
       )}
 
-      {connected && view === "details" && (
+      {view === "details" && (
         <Operations
           wallet={wallet}
           vault={vault}
           markets={markets}
-          onWallet={() => askToConnect(null)}
+          onWallet={() => askToConnect(null, null)}
           onBuild={() => startBuilding()}
-          onClose={() => go("home")}
+          onExit={() => show("home")}
         />
       )}
 
-      <Closing
-        onBuild={() => startBuilding()}
-        onWallet={() => askToConnect(null)}
-        connected={connected}
-      />
+      {onLanding && <Closing onBuild={() => startBuilding()} />}
 
       <WalletDialog
         open={walletOpen}
         wallet={wallet}
         reason={walletReason}
-        onClose={() => { setWalletOpen(false); setWalletReason(null); }}
+        // Only a connection that a gated action asked for moves the user, and
+        // the intent is consumed here rather than in an effect, so dismissing
+        // the dialog can never navigate on its own.
+        onConnected={() => {
+          const next = pendingView;
+          setPendingView(null);
+          if (next) window.setTimeout(() => show(next), 60);
+        }}
+        onClose={() => { setWalletOpen(false); setWalletReason(null); setPendingView(null); }}
       />
     </div>
   );

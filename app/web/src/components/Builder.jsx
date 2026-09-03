@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../sim.js";
 import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
-  validate, notices, notionalOf, toVaultStep, onchainStepId,
+  validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor,
 } from "../strategy.js";
 import { armStep } from "../chain/vault.js";
 import { txUrl, addressUrl } from "../chain/config.js";
-import { upsertDraft } from "../lib/store.js";
+import { upsertDraft, newDraftId } from "../lib/store.js";
+import ScreenHeader from "./ScreenHeader.jsx";
+import CommandBar from "./CommandBar.jsx";
 import {
   marketName, marketQuestion, branchActions, describePlan,
   countdown, settlePhrase, marketShortAsk, asOdds, ORDER_TYPE_COPY,
@@ -16,7 +18,7 @@ import {
 //   what am I watching, what happens if it goes up, what if it goes down,
 //   how much can I lose, and what exactly happens after I activate.
 // Contract vocabulary lives only under "Onchain details".
-export default function Builder({ markets, vault, wallet, initialDraft = null, onWallet, onClose = null, onActivated }) {
+export default function Builder({ markets, vault, wallet, initialDraft = null, onWallet, onExit, onActivated }) {
   const [strategy, setStrategy] = useState(() => initialDraft || loadStrategy());
   const [selected, setSelected] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
@@ -66,10 +68,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const chooseWatch = (key, marketId) => {
     const m = marketById(marketId);
     if (!m) return;
-    const next = markets.open
-      .filter((x) => x.asset === m.asset && x.intervalSec === m.intervalSec && (x.expiry || 0) > (m.expiry || 0))
-      .sort((a, b) => (a.expiry || 0) - (b.expiry || 0))[0]
-      || markets.open.find((x) => x.asset === m.asset && x.marketId !== m.marketId);
+    const next = nextWindowFor(markets.open, m);
     update(key, {
       triggerMarketId: m.marketId, triggerLabel: m.question, triggerExpiry: m.expiry,
       ...(next ? { successorMarketId: next.marketId, successorLabel: next.question, successorExpiry: next.expiry, pool: next.pool } : {}),
@@ -98,9 +97,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       while (next.length < count) {
         const last = next[next.length - 1];
         const lastMarket = marketById(last?.successorMarketId);
-        const following = markets.open
-          .filter((x) => lastMarket && x.asset === lastMarket.asset && x.intervalSec === lastMarket.intervalSec && (x.expiry || 0) > (lastMarket.expiry || 0))
-          .sort((a, b) => (a.expiry || 0) - (b.expiry || 0))[0];
+        const following = nextWindowFor(markets.open, lastMarket);
         if (!lastMarket || !following) break;
         const added = makeStep(next.length + 1, { triggerMarket: lastMarket, successorMarket: following });
         added.price = last.price; added.quantity = last.quantity;
@@ -155,17 +152,36 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   if (!strategy || !step) {
     return (
       <section id="build" className="product-band">
-        <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-32">
-          <span className="section-tag bg-[#52d8ed]">Build</span>
-          <h2 className="mt-5 max-w-[520px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Set the rules.<br />See the risk.</h2>
-          <div className="workspace-card mt-16 p-10 text-[12px] text-[#77717d]">
+        <div className="mx-auto max-w-[1280px] px-7 py-14 sm:px-12 lg:px-16 lg:py-16">
+          <ScreenHeader
+            trail={[{ label: "Your sequences", onClick: onExit }, { label: "New sequence" }]}
+            tag="Build" tagColor="#52d8ed"
+            title="Set the rules. See the risk."
+            back={onExit} backLabel="Back to your sequences"
+          />
+          <div className="workspace-card mt-10 p-10 text-[12px] text-[#77717d]">
             {markets.status === "error"
               ? <>Live markets are unavailable right now. <button onClick={markets.reload} className="font-bold text-[#6f58c2]">Try again</button></>
-              : "Loading live markets…"}
+              : markets.status === "ready"
+                ? <>Not enough markets are open to chain a sequence yet. New windows open as the current ones settle. <button onClick={markets.reload} className="font-bold text-[#6f58c2]">Check again</button></>
+                : "Loading live markets…"}
           </div>
         </div>
       </section>
     );
+  }
+
+  // Only offer to roll as far as the open windows actually allow, so a choice
+  // never silently does nothing.
+  let reach = 1;
+  {
+    let cursor = successor;
+    while (cursor && reach < 4) {
+      const following = nextWindowFor(markets.open, cursor);
+      if (!following) break;
+      reach += 1;
+      cursor = following;
+    }
   }
 
   const branches = branchActions(step, successor);
@@ -177,20 +193,26 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   return (
     <section id="build" className="product-band">
       <div className="mx-auto max-w-[1280px] px-7 py-20 sm:px-12 lg:px-16 lg:py-24">
-        <div className="grid items-end gap-10 lg:grid-cols-[.8fr_1.2fr]">
-          <div>
-            <span className="section-tag bg-[#52d8ed]">Build</span>
-            <h2 className="mt-5 max-w-[520px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Set the rules.<br />See the risk.</h2>
-          </div>
-          <div className="max-w-[520px] lg:justify-self-end">
-            <p className="text-[14px] leading-[1.75] text-[#65616b]">Pick the market you are watching, say what to do on each result, and set the most you are willing to risk. Sequence does the rest the moment it settles.</p>
-            {onClose && (
-              <button onClick={onClose} className="mt-5 text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Back to your sequences</button>
-            )}
-          </div>
-        </div>
+        <ScreenHeader
+          trail={[{ label: "Your sequences", onClick: onExit }, { label: "New sequence" }]}
+          tag="Build"
+          tagColor="#52d8ed"
+          title="Set the rules. See the risk."
+          blurb="Pick the market you are watching, say what to do on each result, and set the most you are willing to risk. Nothing is live until you activate it."
+          back={onExit}
+          backLabel="Back to your sequences"
+        />
 
-        <div className="workspace-card mt-14">
+        <CommandBar
+          markets={markets}
+          vault={vault}
+          onUse={(next) => {
+            setStrategy({ ...next, id: strategy?.id || newDraftId() });
+            setArmResult(null);
+          }}
+        />
+
+        <div className="workspace-card mt-8">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#ece9ef] px-6 py-4 lg:px-8">
             <div className="flex items-center gap-3">
               <span className="h-2 w-2 rounded-full bg-[#8b72e8] shadow-[0_0_0_5px_rgba(139,114,232,.12)]" />
@@ -281,12 +303,17 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
               <Question n={4} title="And after that?">
                 <div className="flex flex-wrap gap-2.5">
                   <ChoiceChip active={steps.length === 1} onClick={() => setRolling(1)}>Stop</ChoiceChip>
-                  {[2, 3, 4].map((n) => (
+                  {[2, 3, 4].filter((n) => n <= reach).map((n) => (
                     <ChoiceChip key={n} active={steps.length === n} onClick={() => setRolling(n)}>
                       Keep rolling · {n} settlements
                     </ChoiceChip>
                   ))}
                 </div>
+                {reach === 1 && (
+                  <p className="mt-3 text-[10px] leading-[1.6] text-[#a19ca5]">
+                    Only one further window is open right now, so this sequence can cover one settlement. More windows open as these settle.
+                  </p>
+                )}
               </Question>
 
               <div>

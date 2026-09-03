@@ -4,13 +4,14 @@ import { fmt, KIND_LABEL } from "../sim.js";
 import { txUrl, addressUrl, SHANNON } from "../chain/config.js";
 import { cancelStep, setPaused } from "../chain/vault.js";
 import GoLive from "./GoLive.jsx";
+import ScreenHeader from "./ScreenHeader.jsx";
 
 const TERMINAL = ["EXECUTED", "SKIPPED", "EXPIRED", "CANCELLED"];
 
 // Every value rendered here is a contract read or a decoded contract event.
 // Nothing on this screen is a placeholder; when the chain has nothing to show,
 // the empty state says so rather than inventing a sequence.
-export default function Operations({ wallet, vault, markets, onWallet, onBuild, onClose = null }) {
+export default function Operations({ wallet, vault, markets, onWallet, onBuild, onExit }) {
   const [view, setView] = useState("active");
   const [busy, setBusy] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -40,16 +41,18 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
   return (
     <section id="how-it-works" className="operations-shell">
       <span id="onchain" className="block h-0" aria-hidden="true" />
-      <div className="mx-auto max-w-[1280px] px-7 py-24 sm:px-12 lg:px-16 lg:py-32">
-        <div className="grid gap-10 lg:grid-cols-[.95fr_1.05fr] lg:items-end">
-          <div>
-            <span className="section-tag bg-[#ff9b7f]">Onchain details</span>
-            <h2 className="mt-5 max-w-[600px] text-[42px] font-extrabold leading-[1.03] tracking-[-0.055em] text-[#0b0a0e] sm:text-[54px]">Check the receipts.<br />Every step is public.</h2>
-          </div>
-          <div className="max-w-[480px] lg:justify-self-end"><p className="text-[14px] leading-[1.75] text-[#65616b]">This is the raw record: the contract that holds your funds, the exact rules it is enforcing, and every transition it has published, each with a transaction you can open yourself. You never need this page to trade, but it is always here.</p>{onClose && <button onClick={onClose} className="mt-5 text-[10px] font-semibold text-[#8f8994] transition hover:text-[#242128]">Back to your sequences</button>}</div>
-        </div>
+      <div className="mx-auto max-w-[1280px] px-7 py-14 sm:px-12 lg:px-16 lg:py-16">
+        <ScreenHeader
+          trail={[{ label: "Your sequences", onClick: onExit }, { label: "Onchain details" }]}
+          tag="Onchain details"
+          tagColor="#ff9b7f"
+          title="Check the receipts."
+          blurb="The raw record: the contract holding your funds, the rules it is enforcing, and every transition it has published. You never need this page to trade, but it is always here."
+          back={onExit}
+          backLabel="Back to your sequences"
+        />
 
-        <div className="wallet-strip mt-16">
+        <div className="wallet-strip mt-10">
           <div className="flex items-center gap-4">
             <span className={`grid h-10 w-10 place-items-center rounded-full ${wallet.connected ? "bg-[#e8f7ef]" : "bg-[#f1eef5]"}`}>
               <span className={`h-2.5 w-2.5 rounded-full ${wallet.connected ? "bg-[#55b58a]" : "bg-[#aaa4ae]"}`} />
