@@ -31,6 +31,21 @@ contract SequenceVault is SomniaEventHandler {
     error AlreadySubscribed(uint256 id);
     error NoSubscription();
     error BadState(Status have, Status need);
+    error BadAction(uint8 action);
+
+    // ---- per-outcome actions ----
+    // What the vault does when an outcome wins. The two buy values are the
+    // IBinaryPool `kind` codes themselves, so nothing is translated at the call
+    // site; STOP is a sentinel outside the kind range (0-3) meaning "place
+    // nothing". Each outcome carries its own action, so a trader can stop on
+    // one side while still trading the other.
+    uint8 internal constant ACT_BUY_YES = 0;
+    uint8 internal constant ACT_BUY_NO = 2;
+    uint8 internal constant ACT_STOP = 255;
+
+    function _validAction(uint8 a) internal pure returns (bool) {
+        return a == ACT_BUY_YES || a == ACT_BUY_NO || a == ACT_STOP;
+    }
 
     // ---- state machine ----
     enum Status { NONE, ARMED, WAITING, TRIGGERED, EXECUTED, SKIPPED, EXPIRED, CANCELLED }
@@ -43,7 +58,8 @@ contract SequenceVault is SomniaEventHandler {
         uint256 quantity;          // bounded size (raw)
         uint64  expireNs;          // order expiry (0 < e <= market expiry)
         uint8   orderType;         // 0 Normal,1 FOK,2 IOC,3 PostOnly
-        bool    buyYesOnWin0;      // branch: win0->YES else NO
+        uint8   actionOnWin0;      // ACT_BUY_YES | ACT_BUY_NO | ACT_STOP
+        uint8   actionOnWin1;      // ACT_BUY_YES | ACT_BUY_NO | ACT_STOP
         uint256 notionalCap;       // max price*qty this step may commit (raw)
         uint128 orderId;           // set once EXECUTED
         uint8   winningOutcome;    // recorded on trigger
@@ -107,6 +123,10 @@ contract SequenceVault is SomniaEventHandler {
 
     // ---- arm a step (off-chain planner) ----
     function armStep(bytes32 stepId, Step calldata s) external onlyOwner {
+        // reject unknown branch actions before anything is stored
+        if (!_validAction(s.actionOnWin0)) revert BadAction(s.actionOnWin0);
+        if (!_validAction(s.actionOnWin1)) revert BadAction(s.actionOnWin1);
+
         // enforce per-step notional cap at arm time
         uint256 notional = s.price * s.quantity;
         if (notional > s.notionalCap) revert CapExceeded(notional, s.notionalCap);
@@ -186,6 +206,16 @@ contract SequenceVault is SomniaEventHandler {
             return;
         }
 
+        // the branch the trader configured for this outcome
+        uint8 kind = (win == 0) ? st.actionOnWin0 : st.actionOnWin1;
+        if (kind == ACT_STOP) {
+            // A deliberate stop, not a rejection: the resolution is still
+            // consumed, so this step can never fire again.
+            st.status = Status.SKIPPED;
+            emit Skipped(stepId, marketId, "stop");
+            return;
+        }
+
         // risk caps
         uint256 notional = st.price * st.quantity;
         if (notional > st.notionalCap) { st.status = Status.SKIPPED; emit Skipped(stepId, marketId, "step-cap"); return; }
@@ -193,7 +223,6 @@ contract SequenceVault is SomniaEventHandler {
             st.status = Status.SKIPPED; emit Skipped(stepId, marketId, "vault-cap"); return;
         }
 
-        uint8 kind = (win == 0) ? (st.buyYesOnWin0 ? 0 : 2) : (st.buyYesOnWin0 ? 2 : 0);
         (bool ok, uint128 orderId) = IBinaryPool(st.pool).placeBinaryOrder(
             kind, st.price, st.quantity, st.expireNs, st.orderType, 0, address(0), 0, 0
         );

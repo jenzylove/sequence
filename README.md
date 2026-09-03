@@ -26,6 +26,8 @@ DreamDEX market resolves
 `SequenceVault` is the trustless executor. The planner and the frontend can be wrong
 without putting the bankroll at risk:
 
+- a per-outcome branch: each result independently buys YES, buys NO, or stops,
+  and a stop places nothing while still consuming the resolution
 - a per-step notional cap, checked at arm time and again at execution
 - a vault-wide maximum outstanding notional
 - one execution per `(marketId, questionId)`, so a resolution cannot fire twice
@@ -59,7 +61,7 @@ identifier, pool address, event name and transaction hash lives behind
 | `src/SequenceVault.sol` | The bounded on-chain executor and its state machine |
 | `src/SequenceHandler.sol` | The earlier reactivity spike that proved the event path |
 | `src/IDreamDEX.sol`, `src/Verified.sol` | Interfaces and constants derived from the markets SDK |
-| `test/` | 26 Foundry tests covering branches, caps, idempotency and access |
+| `test/` | 34 Foundry tests covering branches, stops, caps, idempotency and access |
 | `app/planner/` | Off-chain strategy model, simulation, and vault client |
 | `app/web/src/lib/` | Trader vocabulary, the command parser, draft storage |
 | `app/web/src/components/` | Desk, command surface, builder, onchain details |
@@ -110,9 +112,17 @@ Live and verified:
   rejected for a non-owner
 - the account is subscribed to market results (subscription `15531756`) and
   funded, so settlements now reach it automatically
-- 26/26 contract tests, 6/6 planner tests against live chain, 39/39 browser
+- 34/34 contract tests, 6/6 planner tests against live chain, 49/49 browser
   checks including comprehension checks that fail the build if contract
   vocabulary leaks into the primary interface
+
+Pending a redeploy:
+
+- the per-outcome stop changed the `Step` struct, so the vault at
+  `0xA9A9…Bf62` is now a version behind. `app/web/scripts/deploy-vault.sh`
+  recovers the old vault's stake and collateral, deploys the current contract
+  and repoints the app. `verify-arm.mjs` detects a stale deployment explicitly
+  rather than failing with a bare revert.
 
 Remaining:
 

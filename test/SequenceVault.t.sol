@@ -38,11 +38,20 @@ contract SequenceVaultTest is Test {
     function _void() internal pure returns (bytes memory){uint256[] memory n=new uint256[](2);n[0]=0;n[1]=0;return abi.encode(uint32(2),n,true);}
     function _fire(uint256 q, bytes32 m, bytes memory d) internal { vm.prank(PRECOMPILE); vault.onEvent(HUB,_topics(q,m),d); }
 
-    function _arm(bytes32 stepId, bytes32 market, uint256 price, uint256 qty, uint256 cap, bool yesOn0) internal {
+    uint8 constant BUY_YES = 0;
+    uint8 constant BUY_NO  = 2;
+    uint8 constant STOP    = 255;
+
+    function _armActions(bytes32 stepId, bytes32 market, uint256 price, uint256 qty, uint256 cap, uint8 on0, uint8 on1) internal {
         SequenceVault.Step memory s;
         s.triggerMarketId=market; s.pool=address(pool); s.price=price; s.quantity=qty;
-        s.expireNs=uint64(block.timestamp+3600)*1e9; s.orderType=2; s.buyYesOnWin0=yesOn0; s.notionalCap=cap;
+        s.expireNs=uint64(block.timestamp+3600)*1e9; s.orderType=2;
+        s.actionOnWin0=on0; s.actionOnWin1=on1; s.notionalCap=cap;
         vault.armStep(stepId, s);
+    }
+    // Previous default: outcome 0 buys YES, outcome 1 buys NO (or inverted).
+    function _arm(bytes32 stepId, bytes32 market, uint256 price, uint256 qty, uint256 cap, bool yesOn0) internal {
+        _armActions(stepId, market, price, qty, cap, yesOn0 ? BUY_YES : BUY_NO, yesOn0 ? BUY_NO : BUY_YES);
     }
 
     function test_arm_then_execute_on_win0() public {
@@ -87,7 +96,8 @@ contract SequenceVaultTest is Test {
         bytes32 sid=keccak256("s7"); bytes32 m=keccak256("mG");
         SequenceVault.Step memory s;
         s.triggerMarketId=m; s.pool=address(pool); s.price=100; s.quantity=20; // notional 2000
-        s.expireNs=uint64(block.timestamp+3600)*1e9; s.orderType=2; s.buyYesOnWin0=true; s.notionalCap=1000;
+        s.expireNs=uint64(block.timestamp+3600)*1e9; s.orderType=2;
+        s.actionOnWin0=BUY_YES; s.actionOnWin1=BUY_NO; s.notionalCap=1000;
         vm.expectRevert(abi.encodeWithSelector(SequenceVault.CapExceeded.selector, 2000, 1000));
         vault.armStep(sid, s);
     }
@@ -114,6 +124,69 @@ contract SequenceVaultTest is Test {
         _arm(sid,m,100,5,1000,true); _fire(42,m,_up());
         assertEq(pool.calls(),0);
     }
+    // ---- per-outcome STOP ------------------------------------------------
+    function test_stop_on_win1_places_nothing() public {
+        bytes32 sid=keccak256("stop1"); bytes32 m=keccak256("mStop1"); module.setQid(m,11);
+        _armActions(sid,m,100,5,1000,BUY_YES,STOP);
+        _fire(11,m,_down());                       // outcome 1 wins -> STOP
+        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.SKIPPED));
+        assertEq(pool.calls(),0);
+        assertEq(vault.outstandingNotional(),0);   // a stop commits nothing
+    }
+    function test_stop_on_win0_places_nothing() public {
+        bytes32 sid=keccak256("stop2"); bytes32 m=keccak256("mStop2"); module.setQid(m,12);
+        _armActions(sid,m,100,5,1000,STOP,BUY_NO);
+        _fire(12,m,_up());                         // outcome 0 wins -> STOP
+        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.SKIPPED));
+        assertEq(pool.calls(),0);
+    }
+    function test_other_branch_still_trades_when_one_stops() public {
+        bytes32 sid=keccak256("stop3"); bytes32 m=keccak256("mStop3"); module.setQid(m,13);
+        _armActions(sid,m,100,5,1000,BUY_YES,STOP);
+        _fire(13,m,_up());                         // outcome 0 wins -> buys
+        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.EXECUTED));
+        assertEq(pool.calls(),1); assertEq(pool.lastKind(),BUY_YES);
+        assertEq(vault.outstandingNotional(),500);
+    }
+    function test_stop_still_consumes_the_resolution() public {
+        bytes32 sid=keccak256("stop4"); bytes32 m=keccak256("mStop4"); module.setQid(m,14);
+        _armActions(sid,m,100,5,1000,BUY_YES,STOP);
+        _fire(14,m,_down());                       // stop
+        _fire(14,m,_down());                       // replay must do nothing
+        assertEq(pool.calls(),0);
+        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.SKIPPED));
+    }
+    function test_stop_emits_its_own_reason() public {
+        bytes32 sid=keccak256("stop5"); bytes32 m=keccak256("mStop5"); module.setQid(m,15);
+        _armActions(sid,m,100,5,1000,BUY_YES,STOP);
+        vm.expectEmit(true,true,false,true);
+        emit SequenceVault.Skipped(sid, m, "stop");
+        _fire(15,m,_down());
+    }
+    function test_both_branches_can_buy_the_same_side() public {
+        bytes32 sid=keccak256("stop6"); bytes32 m=keccak256("mStop6"); module.setQid(m,16);
+        _armActions(sid,m,100,5,1000,BUY_NO,BUY_NO);
+        _fire(16,m,_up());
+        assertEq(pool.lastKind(),BUY_NO);
+    }
+    function test_arm_rejects_unknown_action() public {
+        bytes32 sid=keccak256("stop7"); bytes32 m=keccak256("mStop7");
+        SequenceVault.Step memory s;
+        s.triggerMarketId=m; s.pool=address(pool); s.price=100; s.quantity=5;
+        s.expireNs=uint64(block.timestamp+3600)*1e9; s.orderType=2;
+        s.actionOnWin0=7; s.actionOnWin1=BUY_NO; s.notionalCap=1000;   // 7 is not a valid action
+        vm.expectRevert(abi.encodeWithSelector(SequenceVault.BadAction.selector, uint8(7)));
+        vault.armStep(sid, s);
+    }
+    function test_stop_branch_still_respects_pause() public {
+        bytes32 sid=keccak256("stop8"); bytes32 m=keccak256("mStop8"); module.setQid(m,17);
+        _armActions(sid,m,100,5,1000,BUY_YES,STOP);
+        vault.setPaused(true);
+        vm.prank(PRECOMPILE);
+        vm.expectRevert(SequenceVault.Paused.selector);
+        vault.onEvent(HUB,_topics(17,m),_down());
+    }
+
     function test_non_precompile_reverts() public {
         vm.prank(address(0xBEEF)); vm.expectRevert();
         vault.onEvent(HUB,_topics(1,bytes32(uint256(1))),_up());

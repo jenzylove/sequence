@@ -6,12 +6,14 @@ const KEY = "sequence.drafts.v2";
 const replacer = (_k, v) => (typeof v === "bigint" ? { __bigint: v.toString() } : v);
 const reviver = (_k, v) => (v && typeof v === "object" && v.__bigint ? BigInt(v.__bigint) : v);
 
+import { migrateStrategy } from "../strategy.js";
+
 export function loadDrafts() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return [];
     const list = JSON.parse(raw, reviver);
-    return Array.isArray(list) ? list.filter((d) => d?.steps?.length) : [];
+    return Array.isArray(list) ? list.filter((d) => d?.steps?.length).map(migrateStrategy) : [];
   } catch { return []; }
 }
 

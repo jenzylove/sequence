@@ -237,3 +237,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
   transition: transform .3s ease, box-shadow .3s ease;
 }
 .explain-step:hover { transform: translateY(-3px); box-shadow: 0 24px 50px -36px rgba(48,39,67,.42); }
+.branch-select {
+  flex: 1; min-width: 0; border: 0; background: transparent;
+  font-size: 12px; font-weight: 600; color: #28252c; outline: none;
+  padding: 2px 0; cursor: pointer;
+}
+.branch-row.is-stop { border-left-color: #c7c2ca; background: #fbfbfc; }
+.branch-row.is-stop .branch-select { color: #77717d; }

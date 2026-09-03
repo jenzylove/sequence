@@ -201,7 +201,7 @@ export default function Dashboard({ markets, vault, wallet, onOpenBuilder, onEdi
                                 {copy.blurb} {market?.expiry ? `Settles ${countdown(market.expiry)}.` : ""}
                               </div>
                               <div className="mt-1.5 text-[10px] text-[#a19ca5]">
-                                Then buys {s.buyYesOnWin0 ? "YES" : "NO"} · at most {money(s.notionalCap)}
+                                Then {s.actionOnWin0 === 255 && s.actionOnWin1 === 255 ? "does nothing" : `buys ${s.actionOnWin0 === 255 ? (s.actionOnWin1 === 2 ? "NO" : "YES") : (s.actionOnWin0 === 2 ? "NO" : "YES")} on one side`} · at most {money(s.notionalCap)}
                               </div>
                             </div>
                             <button disabled={busy === s.stepId} onClick={() => stopSequence(s)} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#dc6e58] disabled:opacity-40">

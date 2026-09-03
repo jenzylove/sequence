@@ -9,9 +9,9 @@ export function winner(payoutNumerators: bigint[], voided: boolean): number {
   return count === 1 ? idx : 255;
 }
 
-// Mirror of the vault's win->kind branch.
-export function kindFor(win: number, buyYesOnWin0: boolean): number | null {
+// Mirror of the vault's per-outcome branch lookup. Returns null when there is
+// no clean result, and 255 (STOP) when that outcome is configured to do nothing.
+export function kindFor(win: number, step: { actionOnWin0: number; actionOnWin1: number }): number | null {
   if (win === 255) return null;
-  if (win === 0) return buyYesOnWin0 ? 0 : 2;
-  return buyYesOnWin0 ? 2 : 0;
+  return win === 0 ? step.actionOnWin0 : step.actionOnWin1;
 }

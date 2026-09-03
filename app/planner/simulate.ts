@@ -46,7 +46,11 @@ export function simulate(strat: Strategy, resolutions: Resolution[]): SimResult 
     if (!step) continue;
 
     const win = winner(r.payoutNumerators, r.voided);
-    const kind = kindFor(win, step.buyYesOnWin0);
+    const kind = kindFor(win, step);
+    if (kind === 255) {
+      events.push({ stepId: step.id, marketId: r.marketId, action: "SKIPPED", reason: "stop" });
+      continue;
+    }
     if (kind === null) {
       events.push({ stepId: step.id, marketId: r.marketId, action: "SKIPPED", reason: r.voided ? "voided" : "no-clean-winner" });
       continue;

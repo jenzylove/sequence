@@ -9,8 +9,8 @@ const strat: Strategy = {
   bankroll: 10_000000n,        // 10 tUSDC
   maxOutstanding: 5_000000n,   // cap 5 tUSDC
   steps: {
-    step1: { id: "step1", triggerMarketId: "0xAAA", pool: "0xPOOL2", price: 600000n, quantity: 5n, orderType: 2, buyYesOnWin0: true, notionalCap: 4_000000n, next: { onExecuted: "step2" } },
-    step2: { id: "step2", triggerMarketId: "0xBBB", pool: "0xPOOL3", price: 500000n, quantity: 4n, orderType: 2, buyYesOnWin0: false, notionalCap: 3_000000n },
+    step1: { id: "step1", triggerMarketId: "0xAAA", pool: "0xPOOL2", price: 600000n, quantity: 5n, orderType: 2, actionOnWin0: 0, actionOnWin1: 2, notionalCap: 4_000000n, next: { onExecuted: "step2" } },
+    step2: { id: "step2", triggerMarketId: "0xBBB", pool: "0xPOOL3", price: 500000n, quantity: 4n, orderType: 2, actionOnWin0: 2, actionOnWin1: 255, notionalCap: 3_000000n },
   },
 };
 

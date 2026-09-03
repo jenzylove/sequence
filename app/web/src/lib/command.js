@@ -8,7 +8,7 @@
 //
 // The parse is deterministic and local, so what the user reads back is exactly
 // what will be encoded on chain.
-import { makeStep, emptyStrategy, notionalOf } from "../strategy.js";
+import { makeStep, emptyStrategy, notionalOf, ACTION } from "../strategy.js";
 import { marketHeadline, money } from "./language.js";
 
 const ASSETS = [
@@ -50,6 +50,15 @@ function parseCount(text) {
 function parseAsset(text) {
   for (const a of ASSETS) if (a.match.test(text)) return a.key;
   return null;
+}
+
+// Should one side stop instead of trading? "stop if it loses", "stop on NO".
+function parseStops(text) {
+  const stopOnNo = /\bstop\b[^.]{0,24}\b(if it (loses|drops|falls)|on no|on a loss|when it loses|otherwise)\b/i.test(text)
+    || /\b(if it (loses|drops|falls)|on a loss)\b[^.]{0,16}\bstop\b/i.test(text);
+  const stopOnYes = /\bstop\b[^.]{0,24}\b(if it (wins|rises|climbs)|on yes|on a win|when it wins)\b/i.test(text)
+    || /\b(if it (wins|rises|climbs)|on a win)\b[^.]{0,16}\bstop\b/i.test(text);
+  return { stopOnYes, stopOnNo };
 }
 
 // Which way to lean when the watched market lands YES.
@@ -105,6 +114,11 @@ export function parseCommand(text, { open = [], bankroll = 200000000n, accountLi
   }
 
   const buyYesOnWin0 = parseDirection(raw);
+  const { stopOnYes, stopOnNo } = parseStops(raw);
+  const actionOnWin0 = stopOnYes ? ACTION.STOP : (buyYesOnWin0 ? ACTION.BUY_YES : ACTION.BUY_NO);
+  const actionOnWin1 = stopOnNo ? ACTION.STOP : (buyYesOnWin0 ? ACTION.BUY_NO : ACTION.BUY_YES);
+  if (stopOnNo) notes.push("If it closes down, Sequence stops and places nothing.");
+  if (stopOnYes) notes.push("If it closes up, Sequence stops and places nothing.");
 
   // Price: binary contracts are quoted 0-1. Use the market's own last traded
   // price where the indexer has one, so the ticket starts from a real level.
@@ -124,7 +138,8 @@ export function parseCommand(text, { open = [], bankroll = 200000000n, accountLi
     step.price = reference;
     step.quantity = quantity > 0n ? quantity : 1n;
     step.notionalCap = perStepCap;
-    step.buyYesOnWin0 = buyYesOnWin0;
+    step.actionOnWin0 = actionOnWin0;
+    step.actionOnWin1 = actionOnWin1;
     step.orderType = 2;
     strategy.steps.push(step);
   }
@@ -171,7 +186,7 @@ export function explainState({ vaultState, steps = [], markets = [], now = Date.
     lines.push(
       `${live.length === 1 ? "One sequence is" : `${live.length} sequences are`} live. ` +
       `The next one is waiting on ${market ? marketHeadline(market) : "its market"}.${when} ` +
-      `If it lands YES it buys ${s.buyYesOnWin0 ? "YES" : "NO"} next, risking at most ${money(s.notionalCap)}.`,
+      `It risks at most ${money(s.notionalCap)} on the result.`,
     );
   }
 

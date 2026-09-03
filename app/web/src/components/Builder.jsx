@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../sim.js";
 import {
-  ORDER_TYPES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
+  ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
   validate, notices, notionalOf, toVaultStep, onchainStepId,
 } from "../strategy.js";
 import { armStep } from "../chain/vault.js";
@@ -104,7 +104,8 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         if (!lastMarket || !following) break;
         const added = makeStep(next.length + 1, { triggerMarket: lastMarket, successorMarket: following });
         added.price = last.price; added.quantity = last.quantity;
-        added.notionalCap = last.notionalCap; added.buyYesOnWin0 = last.buyYesOnWin0;
+        added.notionalCap = last.notionalCap;
+        added.actionOnWin0 = last.actionOnWin0; added.actionOnWin1 = last.actionOnWin1;
         added.orderType = last.orderType;
         next.push(added);
       }
@@ -168,6 +169,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   }
 
   const branches = branchActions(step, successor);
+  const successorName = marketName(successor) || step.successorLabel || "the next market";
   const stake = notionalOf(step);
   const odds = trigger ? asOdds(trigger.lastPrice) : null;
   const watchable = markets.open.filter((m) => m.pool);
@@ -224,17 +226,23 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
 
               <Question n={2} title="What should happen when it settles?">
                 <div className="space-y-3">
-                  <BranchRow label="If YES" tone="up" action={branches.yes.text} amount={branches.yes.size} />
-                  <BranchRow label="If NO" tone="down" action={branches.no.text} amount={branches.no.size} />
+                  <BranchRow
+                    label="If YES" tone="up"
+                    value={step.actionOnWin0}
+                    onChange={(v) => { update(step.key, { actionOnWin0: v }); setArmResult(null); }}
+                    detail={branches.yes}
+                    successorName={successorName}
+                  />
+                  <BranchRow
+                    label="If NO" tone="down"
+                    value={step.actionOnWin1}
+                    onChange={(v) => { update(step.key, { actionOnWin1: v }); setArmResult(null); }}
+                    detail={branches.no}
+                    successorName={successorName}
+                  />
                 </div>
-                <button
-                  onClick={() => { update(step.key, { buyYesOnWin0: !step.buyYesOnWin0 }); setArmResult(null); }}
-                  className="mt-3 text-[10px] font-semibold text-[#6f58c2] transition hover:text-[#4e3a92]"
-                >
-                  Swap the two sides
-                </button>
                 <p className="mt-3 text-[10px] leading-[1.6] text-[#a19ca5]">
-                  Sequence acts on whichever way it settles. If the market is cancelled or the result is unclear, it does nothing and risks nothing.
+                  Each result is set on its own, so you can trade one and stop on the other. If the market is cancelled or the result is unclear, Sequence does nothing either way.
                 </p>
               </Question>
 
@@ -315,7 +323,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
               <p className="mt-4 text-[12px] leading-[1.75] text-[#3f3a47]">{describePlan(strategy, markets.open)}</p>
 
               <div className="mt-7 space-y-4 border-t border-[#e7e3ea] pt-6">
-                <Row label="On each trade" value={fmt(stake)} />
+                <Row label="On each trade" value={step.actionOnWin0 === ACTION.STOP && step.actionOnWin1 === ACTION.STOP ? "nothing" : fmt(stake)} />
                 <Row label="Trades in this sequence" value={String(steps.length)} />
                 <Row label="Most at risk at once" value={fmt(strategy.maxOutstanding)} strong />
               </div>
@@ -373,12 +381,23 @@ function Question({ n, title, children }) {
   );
 }
 
-function BranchRow({ label, tone, action, amount }) {
+function BranchRow({ label, tone, value, onChange, detail, successorName }) {
   return (
-    <div className={`branch-row ${tone}`}>
+    <div className={`branch-row ${tone} ${detail.stop ? "is-stop" : ""}`}>
       <span className="branch-label">{label}</span>
-      <span className="flex-1 text-[12px] font-semibold text-[#28252c]">{action}</span>
-      <span className="text-[12px] font-bold text-[#151318]">{amount}</span>
+      <select
+        className="branch-select"
+        aria-label={`What happens ${label.toLowerCase()}`}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      >
+        {ACTION_CHOICES.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.value === 255 ? "Stop — place nothing" : `${c.label} in the next ${successorName}`}
+          </option>
+        ))}
+      </select>
+      <span className={`text-[12px] font-bold ${detail.stop ? "text-[#a19ca5]" : "text-[#151318]"}`}>{detail.size}</span>
     </div>
   );
 }

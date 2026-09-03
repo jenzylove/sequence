@@ -4,6 +4,18 @@
 // vault enforces on chain.
 import { stepIdFor } from "./chain/vault.js";
 
+// What the account does when an outcome wins. The buy values are the pool's own
+// side codes, so nothing is translated before it reaches the contract; STOP is
+// a sentinel outside that range meaning "place nothing". Mirrors
+// SequenceVault.ACT_* exactly.
+export const ACTION = { BUY_YES: 0, BUY_NO: 2, STOP: 255 };
+export const ACTION_CHOICES = [
+  { value: ACTION.BUY_YES, label: "Buy YES" },
+  { value: ACTION.BUY_NO, label: "Buy NO" },
+  { value: ACTION.STOP, label: "Stop" },
+];
+export const isAction = (a) => a === ACTION.BUY_YES || a === ACTION.BUY_NO || a === ACTION.STOP;
+
 export const ORDER_TYPES = [
   { value: 0, label: "Normal" },
   { value: 1, label: "Fill or kill" },
@@ -27,10 +39,24 @@ export function makeStep(index, { triggerMarket, successorMarket } = {}) {
     price: 600000n,
     quantity: 5n,
     notionalCap: 4000000n,
-    buyYesOnWin0: true,
+    actionOnWin0: ACTION.BUY_YES,
+    actionOnWin1: ACTION.BUY_NO,
     orderType: 2,
   };
 }
+
+// Drafts saved before per-outcome actions existed carried a single flag.
+export function migrateStep(step) {
+  if (isAction(step.actionOnWin0) && isAction(step.actionOnWin1)) return step;
+  const yesFirst = step.buyYesOnWin0 !== false;
+  const { buyYesOnWin0, ...rest } = step;
+  return {
+    ...rest,
+    actionOnWin0: yesFirst ? ACTION.BUY_YES : ACTION.BUY_NO,
+    actionOnWin1: yesFirst ? ACTION.BUY_NO : ACTION.BUY_YES,
+  };
+}
+export const migrateStrategy = (s) => (s && s.steps ? { ...s, steps: s.steps.map(migrateStep) } : s);
 
 export function emptyStrategy() {
   return { name: "Untitled sequence", bankroll: 10000000n, maxOutstanding: 5000000n, steps: [] };
@@ -100,7 +126,10 @@ export function validate(strategy) {
       errors.push({ scope: at, message: "Order value is above this step's own cap." });
     }
     if (notionalOf(step) > strategy.maxOutstanding) {
-      errors.push({ scope: at, message: "Order value alone is above the vault's outstanding cap." });
+      errors.push({ scope: at, message: "That trade alone is above your total risk limit." });
+    }
+    if (!isAction(step.actionOnWin0) || !isAction(step.actionOnWin1)) {
+      errors.push({ scope: at, message: "Choose what happens on each result." });
     }
   }
   return errors;
@@ -139,7 +168,8 @@ export function toVaultStep(step, now = Date.now()) {
     quantity: step.quantity,
     expireNs: expireNsFor(step, now),
     orderType: step.orderType,
-    buyYesOnWin0: step.buyYesOnWin0,
+    actionOnWin0: step.actionOnWin0,
+    actionOnWin1: step.actionOnWin1,
     notionalCap: step.notionalCap,
   };
 }
@@ -161,7 +191,7 @@ export function loadStrategy() {
     if (!raw) return null;
     const parsed = JSON.parse(raw, reviver);
     if (!parsed?.steps?.length) return null;
-    return parsed;
+    return migrateStrategy(parsed);
   } catch { return null; }
 }
 

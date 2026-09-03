@@ -95,9 +95,14 @@ export const vaultAbi = [
             "internalType": "uint8"
           },
           {
-            "name": "buyYesOnWin0",
-            "type": "bool",
-            "internalType": "bool"
+            "name": "actionOnWin0",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "actionOnWin1",
+            "type": "uint8",
+            "internalType": "uint8"
           },
           {
             "name": "notionalCap",
@@ -371,9 +376,14 @@ export const vaultAbi = [
         "internalType": "uint8"
       },
       {
-        "name": "buyYesOnWin0",
-        "type": "bool",
-        "internalType": "bool"
+        "name": "actionOnWin0",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "actionOnWin1",
+        "type": "uint8",
+        "internalType": "uint8"
       },
       {
         "name": "notionalCap",
@@ -684,6 +694,17 @@ export const vaultAbi = [
         "name": "id",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "BadAction",
+    "inputs": [
+      {
+        "name": "action",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ]
   },

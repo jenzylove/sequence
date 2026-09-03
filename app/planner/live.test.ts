@@ -22,7 +22,7 @@ test("armStep calldata encodes", () => {
     triggerMarketId: ("0x" + "00".repeat(32)) as `0x${string}`,
     pool: SHANNON.binaryModule as `0x${string}`,
     price: 600000n, quantity: 5n, expireNs: 1000000000n, orderType: 2,
-    buyYesOnWin0: true, notionalCap: 4000000n,
+    actionOnWin0: 0, actionOnWin1: 2, notionalCap: 4000000n,
   });
   assert.ok(d.startsWith("0x") && d.length > 10);
   console.log("  calldata len:", d.length);
@@ -51,7 +51,7 @@ test("simulation over real resolutions respects the vault cap", async () => {
   rows.slice(0, 3).forEach((r, i) => {
     steps[`s${i}`] = {
       id: `s${i}`, triggerMarketId: r.marketId, pool: r.binaryPoolAddress ?? SHANNON.binaryModule,
-      price: 600000n, quantity: 5n, orderType: 2, buyYesOnWin0: true, notionalCap: 4_000000n,
+      price: 600000n, quantity: 5n, orderType: 2, actionOnWin0: 0, actionOnWin1: 2, notionalCap: 4_000000n,
     };
   });
   const strat = { name: "live", entryStepId: "s0", steps, bankroll: 10_000000n, maxOutstanding: 5_000000n };

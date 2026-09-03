@@ -125,7 +125,7 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
                         <div className="mt-3 flex items-start justify-between gap-5">
                           <div>
                             <div className="text-[13px] font-bold text-[#28252c]">{active.successorLabel || "Successor pool"}</div>
-                            <div className="mt-1.5 text-[10px] text-[#85808a]">If outcome 0 wins → {active.buyYesOnWin0 ? "Buy YES" : "Buy NO"} · {fmt(active.price * active.quantity)} of {fmt(active.notionalCap)} cap</div>
+                            <div className="mt-1.5 text-[10px] text-[#85808a]">If YES → {sideLabel(active.actionOnWin0)} · If NO → {sideLabel(active.actionOnWin1)} · up to {fmt(active.notionalCap)}</div>
                             <a href={addressUrl(active.pool)} target="_blank" rel="noreferrer" className="mt-2 block font-mono text-[9px] text-[#a19ca5] hover:text-[#6f58c2]">pool {active.pool.slice(0, 10)}… ↗</a>
                           </div>
                           <span className="rounded-full bg-[#eeeafd] px-2.5 py-1 text-[8px] font-bold uppercase tracking-[.1em] text-[#7056c9]">{active.statusLabel}</span>
@@ -233,6 +233,8 @@ function describe(item) {
       return { tone: "violet", title: item.name, detail: "Vault event." };
   }
 }
+
+const sideLabel = (a) => (a === 255 ? "stop" : a === 2 ? "buy NO" : "buy YES");
 
 const short = (v) => (typeof v === "string" && v.length > 14 ? `${v.slice(0, 8)}…${v.slice(-4)}` : String(v));
 

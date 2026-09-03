@@ -31,6 +31,7 @@ export const SKIP_REASON = {
   voided: "the market was cancelled, so there was no result to act on",
   "no-clean-winner": "the result came back unclear, so nothing was risked",
   "questionId-mismatch": "the result did not match the market on file, so it was ignored",
+  stop: "you set this result to stop, so it placed nothing",
   "step-cap": "the trade was larger than the limit you set for this step",
   "vault-cap": "it would have pushed you past your total risk limit",
 };
@@ -133,19 +134,24 @@ export const asOdds = (raw) => (raw === null || raw === undefined ? null : Math.
 export function branchActions(step, successorMarket) {
   const next = marketName(successorMarket) || step.successorLabel || "the next market";
   const size = money(step.price * step.quantity);
-  const yesSide = step.buyYesOnWin0 ? "YES" : "NO";
-  const noSide = step.buyYesOnWin0 ? "NO" : "YES";
-  return {
-    yes: { side: yesSide, text: `Buy ${yesSide} in the next ${next}`, verb: `buys ${yesSide} in the next ${next}`, size },
-    no: { side: noSide, text: `Buy ${noSide} in the next ${next}`, verb: `buys ${noSide} in the next ${next}`, size },
+  const describe = (action) => {
+    if (action === 255) {
+      return { stop: true, side: null, text: "Stop", verb: "stops and places nothing", size: "—" };
+    }
+    const side = action === 2 ? "NO" : "YES";
+    return { stop: false, side, text: `Buy ${side} in the next ${next}`, verb: `buys ${side} in the next ${next}`, size };
   };
+  return { yes: describe(step.actionOnWin0), no: describe(step.actionOnWin1) };
 }
 
 // One sentence describing what a whole step will do, in trader language.
 export function describeStep(step, { triggerMarket, successorMarket } = {}) {
   const watch = marketName(triggerMarket) || step.triggerLabel || "your chosen market";
   const { yes, no } = branchActions(step, successorMarket);
-  return `When ${watch} settles: if it closes up, Sequence ${yes.verb} for ${yes.size}. If it closes down, it ${no.verb} for ${no.size}. Either way it risks at most ${money(step.notionalCap)} on that trade.`;
+  const up = yes.stop ? "Sequence stops" : `Sequence ${yes.verb} for ${yes.size}`;
+  const down = no.stop ? "it stops" : `it ${no.verb} for ${no.size}`;
+  const risk = yes.stop && no.stop ? "" : ` It risks at most ${money(step.notionalCap)} on that trade.`;
+  return `When ${watch} settles: if it closes up, ${up}. If it closes down, ${down}.${risk}`;
 }
 
 // The whole plan in one plain sentence, for the moment before activating.
@@ -158,5 +164,10 @@ export function describePlan(strategy, markets = []) {
   const more = strategy.steps.length > 1
     ? ` It then keeps rolling for ${strategy.steps.length - 1} more settlement${strategy.steps.length > 2 ? "s" : ""}.`
     : " It stops after that one trade.";
-  return `When ${watch} settles, Sequence ${yes.verb} for ${yes.size} if it closes up, or ${no.verb} for ${no.size} if it closes down.${more} You can never have more than ${money(strategy.maxOutstanding)} at risk at once.`;
+  const up = yes.stop ? "stops and places nothing" : `${yes.verb} for ${yes.size}`;
+  const down = no.stop ? "stops and places nothing" : `${no.verb} for ${no.size}`;
+  if (yes.stop && no.stop) {
+    return `As configured this sequence never trades: both results are set to stop. Change one of them to buy a side.`;
+  }
+  return `When ${watch} settles, Sequence ${up} if it closes up, or ${down} if it closes down.${more} You can never have more than ${money(strategy.maxOutstanding)} at risk at once.`;
 }

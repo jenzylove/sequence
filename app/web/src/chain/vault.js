@@ -44,13 +44,15 @@ export async function readVaultState(vault = SHANNON.vault) {
 export async function readStep(stepId, vault = SHANNON.vault) {
   const client = publicClient();
   const raw = await client.readContract({ address: vault, abi: vaultAbi, functionName: "steps", args: [stepId] });
-  const [status, triggerMarketId, pool, price, quantity, expireNs, orderType, buyYesOnWin0, notionalCap, orderId, winningOutcome] = raw;
+  const [status, triggerMarketId, pool, price, quantity, expireNs, orderType, actionOnWin0, actionOnWin1, notionalCap, orderId, winningOutcome] = raw;
   return {
     stepId,
     status: Number(status),
     statusLabel: STATUS[Number(status)],
     triggerMarketId, pool, price, quantity, expireNs,
-    orderType: Number(orderType), buyYesOnWin0, notionalCap,
+    orderType: Number(orderType),
+    actionOnWin0: Number(actionOnWin0), actionOnWin1: Number(actionOnWin1),
+    notionalCap,
     orderId, winningOutcome: Number(winningOutcome),
     exists: Number(status) !== 0,
   };
@@ -114,7 +116,8 @@ export function encodeArmStep(stepId, step) {
       quantity: step.quantity,
       expireNs: step.expireNs,
       orderType: step.orderType,
-      buyYesOnWin0: step.buyYesOnWin0,
+      actionOnWin0: step.actionOnWin0,
+      actionOnWin1: step.actionOnWin1,
       notionalCap: step.notionalCap,
       orderId: 0n,
       winningOutcome: 0,
@@ -134,7 +137,8 @@ export async function armStep({ provider, account, stepId, step, vault = SHANNON
     quantity: step.quantity,
     expireNs: step.expireNs,
     orderType: step.orderType,
-    buyYesOnWin0: step.buyYesOnWin0,
+    actionOnWin0: step.actionOnWin0,
+    actionOnWin1: step.actionOnWin1,
     notionalCap: step.notionalCap,
     orderId: 0n,
     winningOutcome: 0,

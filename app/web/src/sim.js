@@ -16,10 +16,11 @@ export function winner(nums, voided) {
   return count === 1 ? idx : 255;
 }
 
-export function kindFor(win, buyYesOnWin0) {
+// Mirror of the vault's branch lookup. Returns null when there is no clean
+// result, and 255 (STOP) when the trader configured that outcome to do nothing.
+export function kindFor(win, step) {
   if (win === 255) return null;
-  if (win === 0) return buyYesOnWin0 ? 0 : 2;
-  return buyYesOnWin0 ? 2 : 0;
+  return win === 0 ? step.actionOnWin0 : step.actionOnWin1;
 }
 
 // Turn genuine settled markets from the indexer into the resolution stream the
@@ -57,9 +58,13 @@ export function simulate(strategy, resolutions) {
     if (!step) continue;
 
     const win = winner(r.payoutNumerators, r.voided);
-    const kind = kindFor(win, step.buyYesOnWin0);
+    const kind = kindFor(win, step);
     if (kind === null) {
       events.push({ stepKey: step.key, marketId: r.marketId, action: "SKIPPED", reason: r.voided ? "voided" : "no clean winner", source: r.source });
+      continue;
+    }
+    if (kind === 255) {
+      events.push({ stepKey: step.key, marketId: r.marketId, action: "SKIPPED", reason: "stop", source: r.source });
       continue;
     }
     const n = notionalOf(step);
@@ -83,11 +88,12 @@ export function simulate(strategy, resolutions) {
 export function branchPreview(strategy, step) {
   const rows = [];
   for (const win of [0, 1]) {
-    const kind = kindFor(win, step.buyYesOnWin0);
+    const kind = kindFor(win, step);
     const n = notionalOf(step);
     let outcome;
-    if (n > step.notionalCap) outcome = { action: "SKIPPED", reason: "step cap" };
-    else if (n > strategy.maxOutstanding) outcome = { action: "SKIPPED", reason: "vault cap" };
+    if (kind === 255) outcome = { action: "SKIPPED", reason: "stop" };
+    else if (n > step.notionalCap) outcome = { action: "SKIPPED", reason: "step cap" };
+    else if (n > strategy.maxOutstanding) outcome = { action: "SKIPPED", reason: "your total limit" };
     else outcome = { action: "EXECUTED", kind, notional: n };
     rows.push({ win, ...outcome });
   }

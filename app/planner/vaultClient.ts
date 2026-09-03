@@ -19,14 +19,15 @@ export async function readVault(vault: Address = SHANNON.vault as Address) {
 export function stepId(name: string): `0x${string}` { return keccak256(toHex(name)); }
 export function buildArmCalldata(id: `0x${string}`, step: {
   triggerMarketId: `0x${string}`; pool: Address; price: bigint; quantity: bigint;
-  expireNs: bigint; orderType: number; buyYesOnWin0: boolean; notionalCap: bigint;
+  expireNs: bigint; orderType: number; actionOnWin0: number; actionOnWin1: number; notionalCap: bigint;
 }) {
   return encodeFunctionData({
     abi: vaultAbi, functionName: "armStep",
     args: [id, {
       status: 0, triggerMarketId: step.triggerMarketId, pool: step.pool,
       price: step.price, quantity: step.quantity, expireNs: step.expireNs,
-      orderType: step.orderType, buyYesOnWin0: step.buyYesOnWin0, notionalCap: step.notionalCap,
+      orderType: step.orderType, actionOnWin0: step.actionOnWin0, actionOnWin1: step.actionOnWin1,
+      notionalCap: step.notionalCap,
       orderId: 0n, winningOutcome: 0,
     }],
   });

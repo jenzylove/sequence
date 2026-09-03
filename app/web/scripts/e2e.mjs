@@ -123,7 +123,7 @@ const connectViaBuild = async (page) => {
     ["contract address", /0x[0-9a-fA-F]{40}/],
     ["market id", /0x[0-9a-fA-F]{64}/],
     ["chain id", /chain\s*50312/i],
-    ["vault wording", /vault/i],
+    ["vault wording", /\bvault\b/i],
     ["protocol internals", /reactivity|oraclehub|answerdelivered|precompile/i],
     ["account balances", /at risk now|still free|your limit/i],
     ["raw pricefeed question", /pricefeed test/i],
@@ -241,16 +241,16 @@ const connectViaBuild = async (page) => {
   check("builder answers the five trader questions", unanswered.length === 0, unanswered.join(" | "));
 
   const builderJargon = [
-    ["Outcome 0/1", /outcome [01]/i],
+    ["Outcome 0/1", /outcome [01]\b/i],
     ["bounded actions", /bounded action/i],
     ["successor", /successor/i],
     ["cap will bind", /cap will bind/i],
     ["pricefeed question", /pricefeed test/i],
     ["raw market id", /0x[0-9a-fA-F]{64}/],
     ["pool address", /0x[0-9a-fA-F]{40}/],
-    ["vault", /vault/i],
+    ["vault", /\bvault\b/i],
     ["notional", /notional/i],
-    ["arm/armed", /arm(ed|ing)?/i],
+    ["arm/armed", /\barm(ed|ing)?\b/i],
   ].filter(([, re]) => re.test(builder)).map(([n]) => n);
   check("builder carries no contract vocabulary", builderJargon.length === 0, builderJargon.join(", "));
   check("builder keeps raw ids behind a disclosure", /Onchain details/i.test(builder));
@@ -259,6 +259,24 @@ const connectViaBuild = async (page) => {
   const perTrade = await page.getByLabel("Amount per trade").inputValue();
   const branchText = (await page.locator(".branch-row").allInnerTexts()).join(" ");
   check("per-trade amount matches both branches", branchText.includes(`$${Number(perTrade).toLocaleString()}`), `input $${perTrade}`);
+
+  // Each outcome must be independently settable, including a real Stop.
+  const yesSelect = page.getByLabel("What happens if yes");
+  const noSelect = page.getByLabel("What happens if no");
+  const yesOptions = await yesSelect.locator("option").allInnerTexts();
+  check("each outcome offers Buy YES / Buy NO / Stop",
+    yesOptions.some((o) => /buy yes/i.test(o)) && yesOptions.some((o) => /buy no/i.test(o)) && yesOptions.some((o) => /stop/i.test(o)),
+    yesOptions.join(" | "));
+
+  await noSelect.selectOption("255");
+  await page.waitForTimeout(400);
+  const stopped = await page.locator("#build").innerText();
+  check("stopping one outcome leaves the other trading",
+    /stops and places nothing if it closes down/i.test(stopped) && /buys (YES|NO) in the next/i.test(stopped));
+  check("a stopped branch shows no amount", (await page.locator(".branch-row.is-stop").count()) === 1);
+
+  await noSelect.selectOption("2");
+  await page.waitForTimeout(300);
 
   // Market names must read like markets, not like protocol records.
   const firstMarket = await page.locator("select[aria-label='Market to watch'] option").nth(1).innerText();
