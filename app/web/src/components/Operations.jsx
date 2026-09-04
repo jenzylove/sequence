@@ -152,11 +152,11 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
                       {isOwner && (
                         <div className="flex items-center gap-4">
                           {active && !TERMINAL.includes(active.statusLabel) && (
-                            <button disabled={busy !== null} onClick={() => runOwnerAction("cancel", () => cancelStep({ provider: wallet.provider, account: wallet.account, stepId: active.stepId }))} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#dc6e58] disabled:opacity-40">
+                            <button disabled={busy !== null} onClick={() => runOwnerAction("cancel", () => cancelStep({ provider: wallet.provider, account: wallet.account, vault: vault.address, stepId: active.stepId }))} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#dc6e58] disabled:opacity-40">
                               {busy === "cancel" ? "Cancelling…" : "Cancel step"}
                             </button>
                           )}
-                          <button disabled={busy !== null} onClick={() => runOwnerAction("pause", () => setPaused({ provider: wallet.provider, account: wallet.account, paused: !state.paused }))} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#242128] disabled:opacity-40">
+                          <button disabled={busy !== null} onClick={() => runOwnerAction("pause", () => setPaused({ provider: wallet.provider, account: wallet.account, vault: vault.address, paused: !state.paused }))} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#242128] disabled:opacity-40">
                             {busy === "pause" ? "Sending…" : state.paused ? "Unpause vault" : "Pause vault"}
                           </button>
                         </div>

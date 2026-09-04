@@ -37,7 +37,8 @@ export function makeStep(index, { triggerMarket, successorMarket } = {}) {
     successorLabel: successorMarket?.question || "",
     successorExpiry: successorMarket?.expiry || null,
     pool: successorMarket?.pool || "",
-    price: 600000n,
+    // provisional only: replaced by the live book as soon as a market is picked
+    price: 500000n,
     quantity: 5n,
     notionalCap: 4000000n,
     actionOnWin0: ACTION.BUY_YES,

@@ -24,6 +24,8 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const [showRaw, setShowRaw] = useState(false);
   const [arming, setArming] = useState(false);
   const [armResult, setArmResult] = useState(null);
+  const [book, setBook] = useState(null);
+  const [tradable, setTradable] = useState(null);
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   useEffect(() => {
     if (!strategy) return;
     saveStrategy(strategy);
-    if (strategy.id) upsertDraft(strategy);
+    if (strategy.id) upsertDraft(wallet.account, strategy);
   }, [strategy]);
   useEffect(() => {
     if (!strategy?.steps.length) return;
@@ -58,6 +60,39 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const marketById = (id) => markets.open.find((m) => m.marketId === id);
   const trigger = step ? marketById(step.triggerMarketId) : null;
   const successor = step ? marketById(step.successorMarketId) : null;
+
+  // Price the follow-on order against the live book rather than a fixed guess.
+  // A binary contract quoted only in YES terms means a NO order priced at a
+  // YES-looking number simply never crosses, and the order fills nothing.
+  const successorId = step?.successorMarketId;
+  const buyingNo = step ? (step.actionOnWin0 === ACTION.BUY_NO || step.actionOnWin1 === ACTION.BUY_NO) : false;
+  useEffect(() => {
+    if (!successorId) { setBook(null); return; }
+    let live = true;
+    (async () => {
+      try {
+        const next = await fetchBook(successorId);
+        if (!live) return;
+        setBook(next);
+        const cross = crossingPrice(next, buyingNo);
+        if (cross) {
+          setStrategy((cur) => ({
+            ...cur,
+            steps: cur.steps.map((s) => {
+              if (s.key !== step.key) return s;
+              // Keep the stake the trader chose; the size follows the price.
+              let quantity = s.notionalCap / cross;
+              if (quantity < 1n) quantity = 1n;
+              return { ...s, price: cross, quantity };
+            }),
+          }));
+        }
+      } catch { if (live) setBook(null); }
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [successorId, buyingNo]);
+
 
   const patch = (change) => setStrategy((cur) => ({ ...cur, ...change }));
   const update = (key, change) =>
@@ -129,6 +164,19 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const activate = async () => {
     setArming(true);
     setArmResult(null);
+
+    // The indexer can lag, and pools are recycled between windows. Confirm
+    // against the module itself before asking anyone to sign.
+    for (const s of strategy.steps) {
+      const check = await checkTradable(s.successorMarketId, s.pool);
+      if (!check.ok) {
+        setArmResult({ ok: false, error: `${check.problems[0]} Pick another market and try again.` });
+        setArming(false);
+        setTradable(check);
+        return;
+      }
+    }
+    setTradable({ ok: true, problems: [] });
     const done = [];
     try {
       const ids = strategy.steps.map((s) => onchainStepId(strategy, s));
@@ -138,7 +186,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         const s = strategy.steps[i];
         const next = i + 1 < ids.length ? ids[i + 1] : undefined;
         await queueStep({
-          provider: wallet.provider, account: wallet.account,
+          provider: wallet.provider, account: wallet.account, vault: vault.address,
           stepId: ids[i], step: toVaultStep(s, Date.now(), next),
         });
       }
@@ -146,7 +194,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       for (const [i, s] of [strategy.steps[0]].entries()) {
         const stepId = ids[i];
         const result = await armStep({
-          provider: wallet.provider, account: wallet.account, stepId,
+          provider: wallet.provider, account: wallet.account, vault: vault.address, stepId,
           step: toVaultStep(s, Date.now(), ids[1]),
         });
         const t = marketById(s.triggerMarketId);
@@ -296,7 +344,9 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
                       <input
                         type="number" step="0.5" min="0"
                         aria-label="Amount per trade"
-                        value={Number(notionalOf(step)) / 1e6}
+                        // Shown to the cent, so the amount here reads exactly
+                        // as it does on the branches and in the summary.
+                        value={(Number(notionalOf(step)) / 1e6).toFixed(2)}
                         onChange={(e) => setStake(step.key, e.target.value)}
                       />
                     </div>
@@ -314,6 +364,25 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
                     </div>
                   </label>
                 </div>
+                {book && (
+                  <div className="mt-4 rounded-sm border border-[#ece9ef] bg-[#fbfbfc] p-4">
+                    <div className="micro-label">Live price on the market you trade into</div>
+                    {book.depth === 0 ? (
+                      <p className="mt-2 text-[10px] leading-[1.6] text-[#a8834f]">
+                        Nothing is resting on this book yet, so there is no price to cross. The order may not fill until someone quotes it.
+                      </p>
+                    ) : (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-[10px] text-[#7f7984]">
+                        <span>Best ask {fmt(buyingNo ? book.bestAskNo : book.bestAskYes)}</span>
+                        <span className="text-[#28252c]">Your order crosses at <b className="font-bold">{fmt(step.price)}</b></span>
+                        <span className="text-[#a19ca5]">{buyingNo ? "NO is priced from the YES book" : "taken from resting sell orders"}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {tradable && !tradable.ok && (
+                  <p className="mt-3 text-[10px] font-semibold text-[#dc6e58]" role="alert">{tradable.problems[0]}</p>
+                )}
                 <p className="mt-3 text-[10px] leading-[1.6] text-[#a19ca5]">
                   Contracts trade in whole lots, so the amount rounds down to what can actually be bought. Your account enforces the total itself and will stand down any trade that would take you past it.
                 </p>

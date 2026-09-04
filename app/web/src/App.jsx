@@ -7,6 +7,7 @@ import Builder from "./components/Builder.jsx";
 import Operations from "./components/Operations.jsx";
 import Closing from "./components/Closing.jsx";
 import WalletDialog from "./components/WalletDialog.jsx";
+import Provision from "./components/Provision.jsx";
 import { useWallet } from "./hooks/useWallet.js";
 import { useMarkets } from "./hooks/useMarkets.js";
 import { useVault } from "./hooks/useVault.js";
@@ -34,7 +35,7 @@ export default function App() {
 
   const wallet = useWallet();
   const markets = useMarkets();
-  const vault = useVault();
+  const vault = useVault(wallet.account);
   const connected = wallet.connected;
 
   const show = (next) => {
@@ -83,7 +84,13 @@ export default function App() {
 
       {onLanding && <HowItWorks />}
 
-      {view === "home" && (
+      {/* A wallet with no account cannot use any product screen, so it is
+          offered its own rather than shown someone else's balances. */}
+      {connected && vault.needsVault && view !== "landing" && (
+        <Provision wallet={wallet} vault={vault} onReady={() => show("home")} />
+      )}
+
+      {view === "home" && !vault.needsVault && (
         <Dashboard
           markets={markets}
           vault={vault}
@@ -94,7 +101,7 @@ export default function App() {
         />
       )}
 
-      {view === "build" && (
+      {view === "build" && !vault.needsVault && (
         <Builder
           markets={markets}
           vault={vault}
@@ -106,7 +113,7 @@ export default function App() {
         />
       )}
 
-      {view === "details" && (
+      {view === "details" && !vault.needsVault && (
         <Operations
           wallet={wallet}
           vault={vault}

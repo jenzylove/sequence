@@ -5,6 +5,7 @@
 import { createPublicClient, createWalletClient, custom, http, encodeFunctionData, keccak256, toHex, parseEventLogs } from "viem";
 import { SHANNON, shannonChain } from "./config.js";
 import { vaultAbi } from "./abi.js";
+import { factoryAbi } from "./factoryAbi.js";
 import { erc20Abi } from "./erc20.js";
 
 export const STATUS = ["NONE", "ARMED", "WAITING", "TRIGGERED", "PLACED", "SKIPPED", "EXPIRED", "CANCELLED", "PENDING"];
@@ -182,3 +183,31 @@ export const approvePool = (opts) => sendVaultTx({ ...opts, functionName: "appro
 export const queueStep = (opts) => sendVaultTx({ ...opts, functionName: "queueStep", args: [opts.stepId, opts.step] });
 export const cancelStep = (opts) => sendVaultTx({ ...opts, functionName: "cancelStep", args: [opts.stepId] });
 export const setPaused = (opts) => sendVaultTx({ ...opts, functionName: "setPaused", args: [opts.paused] });
+
+// ---- per-wallet accounts ---------------------------------------------------
+
+// The vault belonging to a wallet, or null if that wallet has never provisioned
+// one. This is what makes the product multi-tenant: nothing reads a hardcoded
+// vault any more, so a visitor sees their own account or an invitation to make
+// one, never somebody else's.
+export async function vaultForAccount(account, factory = SHANNON.factory) {
+  if (!account || !factory) return null;
+  const found = await publicClient().readContract({
+    address: factory, abi: factoryAbi, functionName: "vaultFor", args: [account],
+  });
+  return found === "0x0000000000000000000000000000000000000000" ? null : found;
+}
+
+// Deploy the connected wallet's own vault. They own it; the factory keeps no
+// authority over it.
+export async function createVault({ provider, account, maxOutstanding, factory = SHANNON.factory }) {
+  const client = publicClient();
+  const { request } = await client.simulateContract({
+    address: factory, abi: factoryAbi, functionName: "createVault",
+    args: [maxOutstanding], account,
+  });
+  const hash = await walletClientFor(provider, account).writeContract(request);
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  const vault = await vaultForAccount(account, factory);
+  return { hash, receipt, vault, status: receipt.status };
+}

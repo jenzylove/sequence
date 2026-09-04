@@ -29,7 +29,7 @@ export default function LimitDialog({ vault, wallet, onClose }) {
     setError(null);
     try {
       await sendVaultTx({
-        provider: wallet.provider, account: wallet.account,
+        provider: wallet.provider, account: wallet.account, vault: vault.address,
         functionName: "setMaxOutstanding", args: [next],
       });
       await vault.refresh();

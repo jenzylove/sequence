@@ -16,4 +16,13 @@ writeFileSync(
   resolve(here, "../src/chain/abi.js"),
   `${header}export const vaultAbi = ${JSON.stringify(artifact.abi, null, 2)};\n`,
 );
+const factory = JSON.parse(readFileSync(resolve(root, "out/SequenceVaultFactory.sol/SequenceVaultFactory.json"), "utf8"));
+writeFileSync(
+  resolve(here, "../src/chain/factoryAbi.js"),
+  `// GENERATED from out/SequenceVaultFactory.sol/SequenceVaultFactory.json.
+// Do not edit by hand; run scripts/gen-abi.mjs after forge build.
+export const factoryAbi = ${JSON.stringify(factory.abi, null, 2)};
+`,
+);
 console.log(`abi.js regenerated: ${artifact.abi.length} entries`);
+console.log(`factoryAbi.js regenerated: ${factory.abi.length} entries`);
