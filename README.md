@@ -26,8 +26,15 @@ DreamDEX market resolves
 `SequenceVault` is the trustless executor. The planner and the frontend can be wrong
 without putting the bankroll at risk:
 
+- one vault per wallet, deployed by a factory that keeps no authority over it
 - a per-outcome branch: each result independently buys YES, buys NO, or stops,
   and a stop places nothing while still consuming the resolution
+- a conditional chain: later steps are queued without listening, and are armed
+  only after the step before them actually places an order
+- PLACED, never EXECUTED: acceptance by the pool is all the vault can observe
+  from inside the callback, so it never claims a fill it cannot see
+- exposure released when the market traded into resolves, so a rolling sequence
+  cannot block itself against its own cap
 - a per-step notional cap, checked at arm time and again at execution
 - a vault-wide maximum outstanding notional
 - one execution per `(marketId, questionId)`, so a resolution cannot fire twice
@@ -61,7 +68,8 @@ identifier, pool address, event name and transaction hash lives behind
 | `src/SequenceVault.sol` | The bounded on-chain executor and its state machine |
 | `src/SequenceHandler.sol` | The earlier reactivity spike that proved the event path |
 | `src/IDreamDEX.sol`, `src/Verified.sol` | Interfaces and constants derived from the markets SDK |
-| `test/` | 34 Foundry tests covering branches, stops, caps, idempotency and access |
+| `src/SequenceVaultFactory.sol` | One vault per wallet, so the product is multi-tenant |
+| `test/` | 53 Foundry tests: branches, stops, chaining, caps, exposure, access |
 | `app/planner/` | Off-chain strategy model, simulation, and vault client |
 | `app/web/src/lib/` | Trader vocabulary, the command parser, draft storage |
 | `app/web/src/components/` | Desk, command surface, builder, onchain details |
@@ -84,7 +92,7 @@ and cap logic as the vault.
 ## Run it
 
 ```bash
-forge test                       # 26 contract tests
+forge test                       # 53 contract tests
 cd app && npx tsx --test planner/live.test.ts   # planner against live Shannon
 cd app/web && npm run dev        # the product
 ```
@@ -97,6 +105,8 @@ node scripts/gen-abi.mjs         # regenerate the ABI from the compiled artifact
 node scripts/verify-arm.mjs      # the real armStep path against live chain state
 npm run build && node scripts/e2e.mjs   # browser run of the whole journey
 node scripts/verify-clean-clone.mjs     # build HEAD in a fresh clone, as a deploy does
+node scripts/verify-readiness.mjs       # what is actually blocking a demo, read from chain
+node scripts/live-fire.mjs --watch      # watch an armed run through to settlement
 ```
 
 The last one matters: a local build only proves the working tree compiles, not
@@ -105,39 +115,41 @@ builds there, which is what a deployment actually sees.
 
 ## Current status
 
-Live and verified:
+Live and verified on Shannon:
 
-- `SequenceVault` deployed on Shannon at `0xA9A9AA93BE8f62723D55dA5Ba100F9803325Bf62`
-- live DreamDEX binary markets and settled history driving the builder
-- vault reads, step reads and event decoding in the browser
-- the `armStep` path simulated successfully from the real vault owner, and correctly
-  rejected for a non-owner
-- the account is subscribed to market results (subscription `15531756`) and
-  funded, so settlements now reach it automatically
-- 34/34 contract tests, 6/6 planner tests against live chain, 49/49 browser
-  checks including comprehension checks that fail the build if contract
-  vocabulary leaks into the primary interface
+- `SequenceVaultFactory` deployed, and the owner's vault created **by** it, so a
+  visiting wallet resolves to its own account or is offered one. A stranger
+  address resolves to none, which is what makes provisioning honest
+- subscription `15952225` open, so DreamDEX resolutions reach the vault
+- $200 of test collateral, with a $5 total risk limit the contract enforces
+- orders priced against the live book, with NO derived as the complement of the
+  YES side, and the successor market re-checked against the module before
+  anything is signed
+- 53 contract tests, 6 planner tests against live chain, 63 browser checks
+  including a pass for a wallet that owns nothing
 
-Pending a redeploy:
+Armed and waiting:
 
-- the per-outcome stop changed the `Step` struct, so the vault at
-  `0xA9A9…Bf62` is now a version behind. `app/web/scripts/deploy-vault.sh`
-  recovers the old vault's stake and collateral, deploys the current contract
-  and repoints the app. `verify-arm.mjs` detects a stale deployment explicitly
-  rather than failing with a bare revert.
+- a live-fire run is armed on a real BTC market
+  (`docs/LIVE_FIRE.json`, `StepArmed 0x600dc906…b93193`). The step sits in
+  `ARMED` and the vault is listening. What has not happened is the settlement:
+  DreamDEX's oracle has published no resolution for some time, and dozens of
+  binary markets are past expiry while still reporting `clobStatus: Trading`.
+  That is a venue-side stall, written up in `docs/FINDINGS.md`. Until the chain
+  shows `Triggered` and then `Placed` or a truthful `Skipped`, the loop is not
+  claimed as proven.
 
-Remaining:
+Deliberately not built yet:
 
-- no follow-on order has been placed on a real settlement yet. That needs a live
-  sequence and one of its watched markets to settle, which is a wallet signature
-  away rather than more code. Until it happens the product says so plainly
-  instead of implying otherwise.
+- redemption of settled positions, so won collateral is not yet recycled
+- the markets SDK; discovery goes to the indexer directly
 
 ## Deployed addresses (Shannon testnet)
 
 | Contract | Address |
 | --- | --- |
-| SequenceVault | `0xA9A9AA93BE8f62723D55dA5Ba100F9803325Bf62` |
+| SequenceVaultFactory | `0x5d2d9862E1B442b303b64fDB677f6e041425dB3c` |
+| SequenceVault (owner's) | `0xf908D5e59d38dF8Fb0739dbE759B373D83aF20Ed` |
 | OracleHub | `0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b` |
 | BinaryMarketsModule | `0x3ecC694Cef705358864a646142ac17A90E29e388` |
 | Test USDC | `0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E` |
