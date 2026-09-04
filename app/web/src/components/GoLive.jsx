@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fmt } from "../sim.js";
 import { txUrl } from "../chain/config.js";
-import { fundVault, subscribeAllMarkets, approvePool } from "../chain/vault.js";
+import { fundVault, subscribeAllMarkets, ensurePoolAllowances } from "../chain/vault.js";
 
 const SUBSCRIPTION_STAKE = 32n * 10n ** 18n;
 const fmtSom = (raw) => `${(Number(raw) / 1e18).toFixed(2)} SOM`;
@@ -67,9 +67,13 @@ export default function GoLive({ vault, wallet }) {
         ? `Your account holds ${fmt(state.bankroll)} to trade with. Give the market permission to draw on it, up to your limit and no further.`
         : "Your account holds no funds yet. Send test USDC to it, then give the market permission to draw on it.",
       complete: false,
-      blocked: (!collateralised && "Add funds to your account first.") || (pools.length === 0 && "Put a sequence live first, so there is a market to approve."),
+      blocked: (!collateralised && "Add funds to your account first.") || (pools.length === 0 && "Put a sequence live first, so there are markets to approve."),
       action: "Give permission",
-      run: () => approvePool({ provider: wallet.provider, account: wallet.account, vault: vault.address, pool: pools[0], amount: state.maxOutstanding }),
+      run: () => ensurePoolAllowances({
+        provider: wallet.provider, account: wallet.account,
+        vault: vault.address, collateral: state.collateral,
+        pools, amount: state.maxOutstanding,
+      }),
     },
   ];
 

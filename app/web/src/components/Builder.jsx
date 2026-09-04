@@ -4,7 +4,7 @@ import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
   validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor,
 } from "../strategy.js";
-import { armStep, queueStep } from "../chain/vault.js";
+import { armStep, queueStep, ensurePoolAllowances } from "../chain/vault.js";
 import { txUrl, addressUrl } from "../chain/config.js";
 import { upsertDraft, newDraftId } from "../lib/store.js";
 import ScreenHeader from "./ScreenHeader.jsx";
@@ -177,6 +177,21 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       }
     }
     setTradable({ ok: true, problems: [] });
+
+    // Every pool this sequence could execute against must be able to draw the
+    // collateral, not just the first one.
+    try {
+      await ensurePoolAllowances({
+        provider: wallet.provider, account: wallet.account,
+        vault: vault.address, collateral: vault.state.collateral,
+        pools: strategy.steps.map((s) => s.pool),
+        amount: strategy.maxOutstanding,
+      });
+    } catch (cause) {
+      setArmResult({ ok: false, error: cause?.shortMessage || "Could not give the market permission to draw funds." });
+      setArming(false);
+      return;
+    }
     const done = [];
     try {
       const ids = strategy.steps.map((s) => onchainStepId(strategy, s));
