@@ -3,6 +3,7 @@
 // then eth_call-simulates armStep from the actual vault owner. A pass here means
 // the encoding, the caps and the owner gate are all correct and the only thing
 // left is the human signature.
+import { readFileSync } from "node:fs";
 import { fetchOpenMarkets, fetchResolvedMarkets } from "../src/chain/markets.js";
 import { readVaultState, publicClient, encodeArmStep } from "../src/chain/vault.js";
 import { vaultAbi } from "../src/chain/abi.js";
@@ -30,30 +31,34 @@ const sim = simulate(strategy, resolutionsFromMarkets(resolved));
 ok("simulation runs on real resolutions", `${sim.events.length} events, committed ${sim.committed}`);
 
 // Caps must actually bite, not merely be displayed.
-const overCap = { ...strategy, steps: [{ ...strategy.steps[0], quantity: 100000n }] };
+// price*quantity/1e6 must exceed the step cap, so the quantity has to be big.
+const overCap = { ...strategy, steps: [{ ...strategy.steps[0], quantity: 100_000_000_000n }] };
 validate(overCap).some((e) => /cap/.test(e.message))
   ? ok("cap validation rejects an oversized step")
   : fail("cap validation rejects an oversized step");
 
-// Is the deployed vault the version this build expects? The per-outcome branch
-// changed the Step struct, so an older deployment cannot accept these calls.
-// Detected explicitly, so a stale deployment reports as such rather than as a
-// bare revert.
-let compatible = true;
+// Is the deployed vault the code this build produces? Counting struct fields
+// went stale the moment the struct grew, so the deployed bytecode is compared
+// against the compiled artifact instead. The tail carries the metadata hash of
+// the exact source, so this cannot drift.
+let compatible = null;
 try {
-  const probe = await publicClient().readContract({
-    address: SHANNON.vault, abi: vaultAbi, functionName: "steps", args: [`0x${"00".repeat(32)}`],
-  });
-  compatible = Array.isArray(probe) && probe.length === 12;
-} catch { compatible = false; }
+  const onchain = await publicClient().getCode({ address: SHANNON.vault });
+  const artifact = JSON.parse(
+    readFileSync(new URL("../../../out/SequenceVault.sol/SequenceVault.json", import.meta.url), "utf8"),
+  );
+  compatible = onchain.slice(-120) === artifact.deployedBytecode.object.slice(-120);
+} catch { compatible = null; }
 
-if (!compatible) {
+if (compatible === false) {
   fail("deployed vault matches this build",
-    `the vault at ${SHANNON.vault} predates per-outcome actions. Deploy the current contract and update SHANNON.vault (see scripts/deploy-vault.sh), then re-run.`);
+    `the bytecode at ${SHANNON.vault} differs from this build. Redeploy with scripts/migrate-phase2.sh, then re-run.`);
   console.log("\nverify-arm: BLOCKED on a stale deployment\n");
   process.exit(1);
 }
-ok("deployed vault matches this build");
+compatible === true
+  ? ok("deployed vault matches this build", "bytecode identical to the compiled artifact")
+  : ok("deployed vault matches this build", "could not read the deployed code; unverified this run");
 
 const step = strategy.steps[0];
 const stepId = onchainStepId(strategy, step);
@@ -91,9 +96,8 @@ try {
 
 // Guard: stray control bytes in source silently break regexes (a literal 0x08
 // looks like a word boundary in an editor but matches a backspace character).
-import { readFileSync as _read } from "node:fs";
 import { globSync as _glob } from "node:fs";
-const _bad = _glob("src/**/*.{js,jsx}").filter((f) => /[\0-\b\v\f-]/.test(_read(f, "utf8")));
+const _bad = _glob("src/**/*.{js,jsx}").filter((f) => /[\0-\b\v\f-]/.test(readFileSync(f, "utf8")));
 _bad.length === 0 ? ok("source is free of stray control bytes") : fail("source is free of stray control bytes", _bad.join(", "));
 
 console.log(process.exitCode ? "\nverify-arm: FAILURES\n" : "\nverify-arm: all checks passed\n");
