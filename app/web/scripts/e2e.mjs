@@ -92,7 +92,10 @@ const goHome = async (page) => {
 const connectViaBuild = async (page, { expect = "#build" } = {}) => {
   await page.getByRole("button", { name: "Build your sequence" }).first().click();
   await page.getByRole("button", { name: /Test harness wallet/ }).click();
-  await page.waitForSelector(expect, { timeout: 45000 });
+  // Wait for the wallet to actually be connected before waiting on a screen
+  // that only renders once the account has been resolved against the factory.
+  await page.getByRole("button", { name: /^0x/ }).first().waitFor({ timeout: 30000 });
+  await page.waitForSelector(expect, { timeout: 60000 });
 };
 
 // ---------------------------------------------------------------- metadata
@@ -168,7 +171,15 @@ const connectViaBuild = async (page, { expect = "#build" } = {}) => {
   const FRESH = "0x1111111111111111111111111111111111111111";
   const { context, page } = await newPage({ width: 1440, height: 1000 }, { owner: FRESH });
   await page.goto(base, { waitUntil: "domcontentloaded" });
-  await connectViaBuild(page, { expect: "#provision" });
+  try {
+    await connectViaBuild(page, { expect: "#provision" });
+  } catch (cause) {
+    const body = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400);
+    console.log(`  DIAG  provision never rendered. page shows: ${body}`);
+    console.log(`  DIAG  screens -> provision:${await page.locator("#provision").count()} build:${await page.locator("#build").count()} dashboard:${await page.locator("#dashboard").count()}`);
+    console.log(`  DIAG  errors: ${errors.slice(-3).join(" || ") || "none captured"}`);
+    throw cause;
+  }
 
   const provision = await page.locator("#provision").innerText();
   check("a wallet with no account is offered one", /Create your trading account/i.test(provision));

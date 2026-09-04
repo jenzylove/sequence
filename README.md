@@ -38,7 +38,10 @@ without putting the bankroll at risk:
 - a per-step notional cap, checked at arm time and again at execution
 - a vault-wide maximum outstanding notional
 - one execution per `(marketId, questionId)`, so a resolution cannot fire twice
-- only the Somnia Reactivity precompile can drive execution
+- Reactivity is the primary delivery path, and a permissionless `syncResolution`
+  is the backstop. Neither can invent an outcome: both run the same rules against
+  the market's own finalized state, share one idempotency key, and can only
+  execute what the owner precommitted
 - owner-only arming, pause, step cancellation, and fund recovery
 
 ## Using it
@@ -69,7 +72,7 @@ identifier, pool address, event name and transaction hash lives behind
 | `src/SequenceHandler.sol` | The earlier reactivity spike that proved the event path |
 | `src/IDreamDEX.sol`, `src/Verified.sol` | Interfaces and constants derived from the markets SDK |
 | `src/SequenceVaultFactory.sol` | One vault per wallet, so the product is multi-tenant |
-| `test/` | 53 Foundry tests: branches, stops, chaining, caps, exposure, access |
+| `test/` | 74 Foundry tests: branches, stops, chaining, caps, exposure, recovery, access |
 | `app/planner/` | Off-chain strategy model, simulation, and vault client |
 | `app/web/src/lib/` | Trader vocabulary, the command parser, draft storage |
 | `app/web/src/components/` | Desk, command surface, builder, onchain details |
@@ -92,7 +95,7 @@ and cap logic as the vault.
 ## Run it
 
 ```bash
-forge test                       # 53 contract tests
+forge test                       # 74 contract tests
 cd app && npx tsx --test planner/live.test.ts   # planner against live Shannon
 cd app/web && npm run dev        # the product
 ```
@@ -120,36 +123,47 @@ Live and verified on Shannon:
 - `SequenceVaultFactory` deployed, and the owner's vault created **by** it, so a
   visiting wallet resolves to its own account or is offered one. A stranger
   address resolves to none, which is what makes provisioning honest
-- subscription `15952225` open, so DreamDEX resolutions reach the vault
+- subscription `16022724` open, so DreamDEX resolutions reach the vault
 - $200 of test collateral, with a $5 total risk limit the contract enforces
 - orders priced against the live book, with NO derived as the complement of the
   YES side, and the successor market re-checked against the module before
   anything is signed
-- 53 contract tests, 6 planner tests against live chain, 63 browser checks
-  including a pass for a wallet that owns nothing
+- 74 contract tests, 21 unit tests for sizing and wallet scoping, 6 planner
+  tests against live chain, and a browser suite including a wallet that owns nothing
 
-Armed and waiting:
+Proven on chain:
 
-- a live-fire run is armed on a real BTC market
-  (`docs/LIVE_FIRE.json`, `StepArmed 0x600dc906…b93193`). The step sits in
-  `ARMED` and the vault is listening. What has not happened is the settlement:
-  DreamDEX's oracle has published no resolution for some time, and dozens of
-  binary markets are past expiry while still reporting `clobStatus: Trading`.
-  That is a venue-side stall, written up in `docs/FINDINGS.md`. Until the chain
-  shows `Triggered` and then `Placed` or a truthful `Skipped`, the loop is not
-  claimed as proven.
+- a real settlement drove a real bounded order. Recorded in `docs/LIVE_FIRE.json`
+  with the receipt broken out in `docs/FILL_EVIDENCE.json`:
+  `ResolutionSynced -> Triggered -> Placed`, order id `110680464442257339085`,
+  $2.0000 of collateral out and $1.9200 returned, so $0.0800 net was consumed.
+  The pool accepted the bounded order; the vault cannot observe fill size from
+  inside the callback, so no fill quantity is claimed beyond that delta
+- a genuinely new wallet completed the journey signing for itself, in
+  `docs/FRESH_WALLET.json`: it started with no account, created its own vault
+  through the factory, was confirmed isolated from the author's, and activated a
+  sequence
+
+Not observed, and not claimed:
+
+- **Reactivity has never been seen to deliver to us.** Every execution so far
+  needed the `syncResolution` backstop. We ruled out filter misconfiguration, a
+  subscription owner below the 32 SOM minimum, and a zero priority fee by
+  testing each; see `docs/FINDINGS.md`. Reactivity remains the intended primary
+  path, and the product does not pretend otherwise
 
 Deliberately not built yet:
 
 - redemption of settled positions, so won collateral is not yet recycled
-- the markets SDK; discovery goes to the indexer directly
+- the markets SDK as a runtime dependency. It is a dev dependency used to derive
+  and check ABIs; the app talks to the indexer and contracts directly
 
 ## Deployed addresses (Shannon testnet)
 
 | Contract | Address |
 | --- | --- |
-| SequenceVaultFactory | `0x5d2d9862E1B442b303b64fDB677f6e041425dB3c` |
-| SequenceVault (owner's) | `0xf908D5e59d38dF8Fb0739dbE759B373D83aF20Ed` |
+| SequenceVaultFactory | `0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc` |
+| SequenceVault (owner's) | `0x78dcAD22f904AE1cE156f4409D312C1438C93ef2` |
 | OracleHub | `0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b` |
 | BinaryMarketsModule | `0x3ecC694Cef705358864a646142ac17A90E29e388` |
 | Test USDC | `0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E` |

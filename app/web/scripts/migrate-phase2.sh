@@ -17,7 +17,9 @@ RPC="${RPC_URL:-https://dream-rpc.somnia.network}"
 MODULE="0x3ecC694Cef705358864a646142ac17A90E29e388"
 TUSDC="0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E"
 MAXOUT="${MAXOUT:-5000000}"
-STAKE="32000000000000000000"          # 32 SOM, what a subscription requires
+STAKE="35000000000000000000"          # 32 SOM minimum plus headroom: the owner
+                                     # balance drifts down and falling under the
+                                     # minimum is silent
 OLD_VAULT="$(grep -oE 'vault: "0x[0-9a-fA-F]{40}"' app/web/src/chain/config.js | grep -oE '0x[0-9a-fA-F]{40}')"
 DRY="${DRY_RUN:-0}"
 
@@ -81,7 +83,7 @@ else
 fi
 
 # ---------------------------------------------------------------- 4. stake
-echo "4. staking $STAKE wei (32 SOM) so the vault can hold a subscription"
+echo "4. staking $STAKE wei so the vault stays above the 32 SOM owner minimum"
 send --value "$STAKE" "$VAULT"
 
 # ---------------------------------------------------------------- 5. subscribe

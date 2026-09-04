@@ -10,8 +10,10 @@ export const SHANNON = {
   oracleHub: "0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b",
   binaryModule: "0x3ecC694Cef705358864a646142ac17A90E29e388",
   testUsdc: "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
-  vault: "0xe0e08329A28347568E56e8184DbC7efDE8c7B2d6",
-  factory: "0x9b71Ad905083b8b35559c45a39Fc12a7C5ADA91f",
+  // ERC-6909 singleton holding every market's YES/NO positions as ids.
+  outcomeToken: "0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9",
+  vault: "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
+  factory: "0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc",
   nativeCurrency: { name: "Somnia", symbol: "STT", decimals: 18 },
 };
 

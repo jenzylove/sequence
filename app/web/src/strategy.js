@@ -24,7 +24,11 @@ export const ORDER_TYPES = [
   { value: 3, label: "Post only" },
 ];
 
-const STORAGE_KEY = "sequence.strategy.v1";
+// The working strategy used to live under one global key, which meant switching
+// wallets in the same browser restored the previous wallet's builder state. The
+// wallet-scoped draft store is now the only persistence, so this exists solely
+// to clear what older builds left behind.
+const LEGACY_STRATEGY_KEY = "sequence.strategy.v1";
 
 export function makeStep(index, { triggerMarket, successorMarket } = {}) {
   return {
@@ -68,16 +72,32 @@ export function emptyStrategy() {
 // open window of the same asset, preferring the same cadence. Only one window
 // per series is open at a time, so the same-cadence match usually does not
 // exist and the next window of that asset is the honest choice.
-export function nextWindowFor(markets, after) {
+// The window a step trades into once its watched market settles.
+//
+// Same asset, always: rolling BTC must never continue into ETH. Cadence is
+// preferred and, when the trader asked for a specific one, required - silently
+// continuing a 15m plan into a 1h market is not the sequence they authorised.
+// Returns null rather than substituting something, so the caller can say so.
+export function nextWindowFor(markets, after, { requireCadence = false } = {}) {
   if (!after) return null;
   const later = markets
     .filter((m) => m.pool && m.marketId !== after.marketId && (m.expiry || 0) > (after.expiry || 0))
     .sort((a, b) => (a.expiry || 0) - (b.expiry || 0));
+
   const cadence = normaliseInterval(after.intervalSec);
-  return later.find((m) => m.asset === after.asset && normaliseInterval(m.intervalSec) === cadence)
-    || later.find((m) => m.asset === after.asset)
-    || later[0]
-    || null;
+  const sameCadence = later.find((m) => m.asset === after.asset && normaliseInterval(m.intervalSec) === cadence);
+  if (sameCadence || requireCadence) return sameCadence || null;
+
+  // A generic continuation may use the asset's next window at another cadence,
+  // but only because the interface names that market before activation.
+  return later.find((m) => m.asset === after.asset) || null;
+}
+
+// True when the continuation is not the same cadence the trader was looking at,
+// so the interface can say which market it will actually trade.
+export function isCadenceSubstitution(after, next) {
+  if (!after || !next) return false;
+  return normaliseInterval(after.intervalSec) !== normaliseInterval(next.intervalSec);
 }
 
 // Seed from real open markets: watch the soonest window that has something to
@@ -198,20 +218,6 @@ export const onchainStepId = (strategy, step) => stepIdFor(`${strategy.name}::${
 const replacer = (_k, v) => (typeof v === "bigint" ? { __bigint: v.toString() } : v);
 const reviver = (_k, v) => (v && typeof v === "object" && v.__bigint ? BigInt(v.__bigint) : v);
 
-export function saveStrategy(strategy) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(strategy, replacer)); } catch { /* storage unavailable */ }
-}
-
-export function loadStrategy() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw, reviver);
-    if (!parsed?.steps?.length) return null;
-    return migrateStrategy(parsed);
-  } catch { return null; }
-}
-
-export function clearStrategy() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* storage unavailable */ }
+export function purgeLegacyStrategy() {
+  try { localStorage.removeItem(LEGACY_STRATEGY_KEY); } catch { /* storage unavailable */ }
 }

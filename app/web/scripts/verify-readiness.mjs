@@ -92,10 +92,16 @@ add("1", "multi-user", hasFactory ? "OK" : "BLOCKED",
   hasFactory ? "a factory/registry exists" : "single shared vault: another wallet sees this vault and cannot arm",
   hasFactory ? null : "add a per-wallet vault factory and resolve the vault from the connected account");
 
-const scoped = /watchKey = \(account\)/.test(useVault) && /keyFor = \(account\)/.test(src("app/web/src/lib/store.js"));
+const strategySrc = src("app/web/src/strategy.js");
+const builderSrc = src("app/web/src/components/Builder.jsx");
+const globalStrategy = /localStorage\.setItem\(\s*LEGACY_STRATEGY_KEY/.test(strategySrc)
+  || /saveStrategy\(/.test(builderSrc);
+const scoped = /watchKey = \(account\)/.test(useVault)
+  && /keyFor = \(account\)/.test(src("app/web/src/lib/store.js"))
+  && !globalStrategy;
 add("10", "multi-user", scoped ? "OK" : "PARTIAL",
   scoped
-    ? "sequences and drafts are stored per wallet, so switching accounts does not blend them"
+    ? "sequences, drafts and the working strategy are stored per wallet; no global key remains"
     : "watched sequences are stored under a global browser key, not scoped per wallet",
   scoped ? null : "scope local state by connected account");
 
@@ -146,16 +152,25 @@ add("1b", "multi-user", factoryAddr ? "OK" : "BLOCKED",
   factoryAddr ? `factory deployed at ${factoryAddr}` : "the factory exists in source but is not deployed or wired into the app",
   factoryAddr ? null : "deploy the factory and resolve each wallet's vault through it");
 
-add("13", "integration", existsSync(join(web, "node_modules/@somnia-chain/markets-sdk")) ? "OK" : "OPEN",
-  "the frontend talks to the indexer directly rather than through the markets SDK");
+// Installing a package is not integration. This is green only if application
+// code actually imports it.
+const importsSdk = ["src/chain/markets.js", "src/chain/module.js", "src/chain/vault.js", "src/strategy.js"]
+  .some((f) => /@somnia-chain\/markets-sdk/.test(src(`app/web/${f}`)));
+add("13", "integration", importsSdk ? "OK" : "OPEN",
+  importsSdk
+    ? "application code imports the markets SDK"
+    : "the app talks to the indexer and contracts directly; the SDK is a dev dependency used to derive and check ABIs, not a runtime integration");
 
 const e2e = src("app/web/scripts/e2e.mjs");
-const freshWallet = /a wallet with no account is offered one/.test(e2e);
-add("15", "proof", freshWallet ? "PARTIAL" : "BLOCKED",
-  freshWallet
-    ? "a wallet owning no vault is exercised end to end up to the signature, but the suite still cannot sign"
-    : "the suite only exercises the vault owner and never signs",
-  freshWallet ? "sign the provisioning and activation once with a real second wallet" : "test with a wallet that does not own the vault");
+let freshProof = null;
+try { freshProof = JSON.parse(src("docs/FRESH_WALLET.json")); } catch { /* none yet */ }
+const signedItself = freshProof?.stepStatus === 1
+  && freshProof.freshVault?.toLowerCase() !== freshProof.authorVault?.toLowerCase();
+add("15", "proof", signedItself ? "OK" : "BLOCKED",
+  signedItself
+    ? `a new wallet ${freshProof.freshWallet} created its own vault ${freshProof.freshVault} and activated a sequence, signing for itself`
+    : "no record of a wallet other than the author completing the journey with real signatures",
+  signedItself ? null : "run scripts/fresh-wallet.mjs");
 
 // The recorded live-fire run is the durable proof, so it is read rather than
 // asserted.
@@ -167,6 +182,15 @@ add("14", "proof", proven ? "OK" : "BLOCKED",
     ? `captured on chain: armed -> ${proven.timeline.map((t) => t.event).join(" -> ")} (${proven.outcome})`
     : "no captured run of armed -> settled -> execution or truthful skip",
   proven ? null : "capture the loop end to end");
+
+const reactive = (fire?.runs || []).find((r) =>
+  (r.timeline || []).some((t) => t.event === "Triggered")
+  && !(r.timeline || []).some((t) => t.event === "ResolutionSynced"));
+add("17", "reactivity", reactive ? "OK" : "OPEN",
+  reactive
+    ? "a settlement reached the vault through Reactivity with no manual sync"
+    : "every observed execution needed syncResolution; Reactivity delivering on its own has NOT been observed",
+  reactive ? null : "keep Reactivity as the primary path and say plainly that it has not been seen to deliver");
 
 const backstop = /function syncResolution/.test(vaultSol);
 add("16", "robustness", backstop ? "OK" : "BLOCKED",

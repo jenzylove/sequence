@@ -209,15 +209,37 @@ contract SequenceVault is SomniaEventHandler {
         emit StepCancelled(stepId);
     }
 
-    // ---- subscription (vault owns its own; needs >=32 SOM) ----
+    // ---- subscription (the vault owns its own; needs >=32 SOM held here) ----
+    //
+    // The library default sets priorityFeePerGas to 0, which leaves a validator
+    // no reason to include the callback. Subscribing with an explicit priority
+    // fee is the first thing to change when deliveries do not arrive, so the fee
+    // is a parameter rather than a constant.
     function subscribeAllMarkets() external onlyOwner returns (uint256) {
+        return _subscribeWith(1 gwei, 40 gwei, 10_000_000);
+    }
+
+    function subscribeAllMarketsWith(uint64 priorityFeePerGas, uint64 maxFeePerGas, uint64 gasLimit)
+        external onlyOwner returns (uint256)
+    {
+        return _subscribeWith(priorityFeePerGas, maxFeePerGas, gasLimit);
+    }
+
+    function _subscribeWith(uint64 priorityFeePerGas, uint64 maxFeePerGas, uint64 gasLimit)
+        internal returns (uint256)
+    {
         if (subscriptionId != 0) revert AlreadySubscribed(subscriptionId);
         bytes32[4] memory topics;
         topics[0] = Verified.ANSWER_DELIVERED_TOPIC0;
         SomniaExtensions.SubscriptionFilter memory f = SomniaExtensions.SubscriptionFilter({
             eventTopics: topics, origin: address(0), emitter: Verified.ORACLE_HUB
         });
-        subscriptionId = SomniaExtensions.subscribe(address(this), f, SomniaExtensions.defaultSubscriptionOptions());
+        SomniaExtensions.SubscriptionOptions memory o = SomniaExtensions.SubscriptionOptions({
+            priorityFeePerGas: priorityFeePerGas,
+            maxFeePerGas: maxFeePerGas,
+            gasLimit: gasLimit
+        });
+        subscriptionId = SomniaExtensions.subscribe(address(this), f, o);
         emit Subscribed(subscriptionId);
         return subscriptionId;
     }
@@ -280,12 +302,19 @@ contract SequenceVault is SomniaEventHandler {
 
         bytes32 ck = keccak256(abi.encodePacked(marketId, questionId));
         if (consumed[ck]) return;                 // idempotent: already handled
-        consumed[ck] = true;
 
+        // Consume only once there is something to consume it. Marking the
+        // resolution first stranded a queued step whose own market resolved
+        // before the link ahead of it armed: the chain would later activate that
+        // step onto a market whose one resolution had already been spent, and it
+        // would wait for ever. A resolution nobody is listening for is left
+        // unconsumed so the step can still act on it once it is armed.
         bytes32 stepId = stepForMarket[marketId];
-        if (stepId == bytes32(0)) return;         // no step armed for this market
+        if (stepId == bytes32(0)) return;         // nothing armed for this market
         Step storage st = steps[stepId];
         if (st.status != Status.ARMED && st.status != Status.WAITING) return;
+
+        consumed[ck] = true;                      // now it is genuinely handled
 
         uint8 win = _winner(nums, voided);
         st.winningOutcome = win;

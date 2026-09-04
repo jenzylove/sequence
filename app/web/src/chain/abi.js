@@ -565,6 +565,35 @@ export const vaultAbi = [
   },
   {
     "type": "function",
+    "name": "subscribeAllMarketsWith",
+    "inputs": [
+      {
+        "name": "priorityFeePerGas",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "maxFeePerGas",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "gasLimit",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "subscriptionId",
     "inputs": [],
     "outputs": [

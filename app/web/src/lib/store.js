@@ -41,3 +41,11 @@ export function removeDraft(account, id) {
   saveDrafts(account, next);
   return next;
 }
+
+// The draft a wallet was last working on. Used to restore the builder, so the
+// working strategy is wallet-scoped like everything else rather than global.
+export function latestDraft(account) {
+  const drafts = loadDrafts(account);
+  if (!drafts.length) return null;
+  return [...drafts].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+}

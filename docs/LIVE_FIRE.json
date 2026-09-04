@@ -1,46 +1,45 @@
 {
   "runs": [
     {
-      "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
-      "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+      "note": "The proven run. Reactivity did not deliver, so the permissionless syncResolution backstop carried it. Reconstructed from the transaction receipt; see docs/FILL_EVIDENCE.json.",
       "vault": "0xe0e08329A28347568E56e8184DbC7efDE8c7B2d6",
-      "factory": "0x9b71Ad905083b8b35559c45a39Fc12a7C5ADA91f",
-      "subscriptionId": "15992689",
       "stepId": "0x85b14dbfb09edbe3182ab2feba11544834e32f0ed8a7e73418804cd1bef86532",
       "trigger": {
-        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013774",
         "name": "BTC 5m",
-        "expiry": 1788540900,
-        "question": "Pricefeed test: will BTC/USDC's price be at or above 79804.75 at unix time 1788540900?"
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013774"
       },
       "successor": {
-        "marketId": "0x00000000000000000000000000000000000000000000000000000000000136e2",
         "name": "BTC 1h",
-        "pool": "0x10f7624a739d86f77e0384e45abbbb25632509b5",
-        "expiry": 1788541200
+        "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5"
+      },
+      "deliveredBy": "syncResolution (permissionless backstop) - NOT Reactivity",
+      "syncTx": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
+      "collateral": {
+        "movedToPool": "2000000",
+        "returnedToVault": "1920000",
+        "netSpent": "80000",
+        "readable": "$2.0000 out, $1.9200 back, net $0.0800",
+        "moves": [
+          {
+            "direction": "out",
+            "to": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
+            "amount": "2000000"
+          },
+          {
+            "direction": "in",
+            "from": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
+            "amount": "1920000"
+          }
+        ]
       },
       "order": {
-        "price": "500000",
-        "quantity": "4000000",
-        "notional": "2000000",
-        "cap": "2000000"
+        "orderId": "110680464442257339085",
+        "side": "BUY_NO",
+        "notionalCommitted": "2000000",
+        "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5"
       },
-      "armedAt": "2026-09-04T16:52:47.304Z",
-      "armedTx": "0xe2291bf145c97b8ad58b6bbf1b6724dc125672ae45a41e60526a4da6a0e6acc7",
-      "armedBlock": "479676516",
       "timeline": [
-        {
-          "event": "StepArmed",
-          "args": {
-            "stepId": "0x85b14dbfb09edbe3182ab2feba11544834e32f0ed8a7e73418804cd1bef86532",
-            "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013774",
-            "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5"
-          },
-          "blockNumber": "479676516",
-          "txHash": "0xe2291bf145c97b8ad58b6bbf1b6724dc125672ae45a41e60526a4da6a0e6acc7",
-          "logIndex": 40,
-          "at": "2026-09-04T16:52:47.842Z"
-        },
         {
           "event": "ResolutionSynced",
           "args": {
@@ -48,10 +47,7 @@
             "by": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
             "questionId": "23208120061106271573776217556395916389417441623348050582556804712641395658075"
           },
-          "blockNumber": "479679928",
-          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
-          "logIndex": 3,
-          "at": "2026-09-04T17:00:16.647Z"
+          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2"
         },
         {
           "event": "Triggered",
@@ -62,10 +58,7 @@
             "voided": false,
             "winningOutcome": 1
           },
-          "blockNumber": "479679928",
-          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
-          "logIndex": 4,
-          "at": "2026-09-04T17:00:16.648Z"
+          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2"
         },
         {
           "event": "Placed",
@@ -76,26 +69,57 @@
             "orderId": "110680464442257339085",
             "notional": "2000000"
           },
-          "blockNumber": "479679928",
-          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
-          "logIndex": 13,
-          "at": "2026-09-04T17:00:16.649Z"
-        },
-        {
-          "event": "ExposureReleased",
-          "args": {
-            "marketId": "0x00000000000000000000000000000000000000000000000000000000000136e2",
-            "amount": "2000000"
-          },
-          "blockNumber": "479680863",
-          "txHash": "0x19c97ea9d19cc5469625840621298e2fa988ae5a2d25ba4421baca8dd31c78d5",
-          "logIndex": 78,
-          "at": "2026-09-04T17:00:16.907Z"
+          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2"
         }
       ],
-      "outcome": "placed",
       "finalStatus": "PLACED",
-      "settledAt": "2026-09-04T17:00:17.118Z"
+      "outcome": "placed",
+      "claim": "The pool accepted the bounded order and $0.0800 of collateral was consumed net, which is consistent with a fill. The vault cannot observe fill quantity from inside the callback, so no fill size is asserted here beyond the collateral delta."
+    },
+    {
+      "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
+      "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+      "vault": "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
+      "factory": "0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc",
+      "subscriptionId": "16022724",
+      "stepId": "0x720ce114dcdaa082ce976382fc4d3b49b077c3c1bb776e84bcea9a3fa63aa7e3",
+      "trigger": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013937",
+        "name": "ETH 5m",
+        "expiry": 1788550800,
+        "question": "Pricefeed test: will ETH/USDC's price be at or above 2457.34 at unix time 1788550800?"
+      },
+      "successor": {
+        "marketId": "0x00000000000000000000000000000000000000000000000000000000000136e1",
+        "name": "ETH 4h",
+        "pool": "0x8b204a7db0d08f7d074360e063bcd4e71e837651",
+        "expiry": 1788552000
+      },
+      "order": {
+        "price": "999000",
+        "quantity": "2002000",
+        "notional": "1999998",
+        "cap": "2000000"
+      },
+      "armedAt": "2026-09-04T19:36:19.546Z",
+      "armedTx": "0xef2383024a103ca9def34775f3da239883874fb80e2117607a39454bf0e1d4a8",
+      "armedBlock": "479774602",
+      "timeline": [
+        {
+          "event": "StepArmed",
+          "args": {
+            "stepId": "0x720ce114dcdaa082ce976382fc4d3b49b077c3c1bb776e84bcea9a3fa63aa7e3",
+            "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013937",
+            "pool": "0x8b204A7db0d08f7d074360E063bcD4e71e837651"
+          },
+          "blockNumber": "479774602",
+          "txHash": "0xef2383024a103ca9def34775f3da239883874fb80e2117607a39454bf0e1d4a8",
+          "logIndex": 0,
+          "at": "2026-09-04T19:36:19.718Z"
+        }
+      ],
+      "outcome": "waiting",
+      "finalStatus": "ARMED"
     }
   ]
 }

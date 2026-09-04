@@ -33,6 +33,11 @@ resolvedAtTimestamp: null
 The oldest unresolved market in that set was **3,863,311 seconds — about 45 days —
 past its expiry**, still labelled `Trading`.
 
+A correction to an earlier draft of this note: we first read that backlog as an
+oracle outage. It was not. Markets we later checked individually had resolved
+within about two seconds of expiry, and the indexer's `finalized` flag was
+simply stale for them. The reporting gap is the finding; the oracle was working.
+
 **Why it matters.** `clobStatus` is the field an integrator naturally treats as
 "can I trade this". It never transitions for a market that expired and was never
 resolved, so a stalled or abandoned market is indistinguishable from a live one
@@ -53,46 +58,51 @@ make progress, and nothing in the API says so.
 
 ---
 
-## 1b. Reactivity did not deliver an event that OracleHub demonstrably emitted
+## 1b. A subscription that never delivered, with the obvious causes ruled out
 
-**Observed.** This is the most serious thing we hit, and we reproduced it three
-times across three separate vaults and three separate subscriptions.
+**Observed.** Reproduced on four separate vaults with four separate
+subscriptions. For each armed market we confirmed, in order:
 
-For each armed market we confirmed, in this order:
-
-1. the market finalized on chain — `isResolved() == true`, a payout vector, and
-   `clobStatus: Finalized` on the indexer;
-2. OracleHub emitted `AnswerDelivered` in the resolving block, matching our
-   subscription's `topic0` and carrying our `marketId` as `topic2`. For example
-   tx `0xde5c9be3…fbeb4`, questionId 50664;
-3. our subscribed contract was never invoked. Its step stayed `ARMED`, its
+1. the market finalized on chain — `isResolved() == true` with a payout vector;
+2. OracleHub emitted `AnswerDelivered` in the resolving block, carrying our
+   `topic0` and our `marketId` as `topic2` (for example tx `0xde5c9be3…fbeb4`,
+   question 50664);
+3. our subscribed contract was never invoked: the step stayed `ARMED`, the
    `consumed` map was empty, and it emitted nothing.
 
-`pokeOracle(oracleQuestionId)` succeeded (`status 0x1`) on already-resolved
-questions but emitted no logs, which is correct — there is nothing to re-fan-out
-once a question is answered — so it is not a recovery route for a delivery that
-was already missed. `voidExpired()` is the dead-oracle escape hatch and would
-have been wrong here: the oracle answered fine.
+**What we ruled out.** Rather than assume a protocol fault we tested each
+plausible cause:
 
-**Why it matters.** A product whose whole promise is "it runs without you"
-cannot be built on a delivery that silently does not arrive. The failure is
-invisible: no revert, no event, no status change. The strategy simply never
-happens, and the user is told it is still waiting.
+| Cause | How it was tested | Result |
+| --- | --- | --- |
+| Wrong filter | `getSubscriptionInfo` read back: topic0 `AnswerDelivered`, topics 1-3 wildcard, origin wildcard, emitter OracleHub, handler our vault, selector `0x53edf33d` | correct |
+| Owner balance under the 32 SOM minimum | ran at 31.90 SOM, then topped to 35.40 and armed again | failed at both |
+| Zero priority fee starving the callback | resubscribed with priorityFeePerGas 1 gwei, maxFeePerGas 40 gwei | failed at both |
+| Gas limit too low | 10,000,000, far above what the handler uses | not the cause |
+| Handler reverting | no vault event, no state change, and the same call path succeeds when driven by `syncResolution` | no evidence of a revert |
 
-**Suggestion.** A way to query a subscription's health from the contract or an
-RPC — last delivery, missed count, active/inactive — would let an application
-notice and say so. Better still, a documented replay or catch-up entry point for
-a subscriber that missed a block.
+`isGuaranteed` is `false`, and the library's `SubscriptionOptions` struct exposes
+no way to set it, so a callback dropped when a block is full cannot be ruled out
+from the outside. `getSubscriptionInfo` also returns the subscription owner as
+the zero address for every subscription we created from a contract, which we
+could not explain.
 
-**What we did about it.** Reactivity remains the primary path. We added
-`syncResolution(bytes32 marketId)`: permissionless, takes only a market id, and
-reads the outcome from the market contract itself, then runs the identical
-internal state machine including the same idempotency key, so a late delivery
-cannot double-fire it. With that path a stuck sequence recovered end to end on
-chain: `Triggered -> Placed`, $2.00 of collateral moved, 4.0 NO contracts
-received (tx `0xe8a0c031…df4f2`).
+**Why it matters.** A product whose promise is "it runs without you" cannot rest
+on a delivery that silently does not arrive. There is no revert, no event and no
+status change: the strategy simply never happens while the interface says it is
+waiting.
 
----
+**Suggestion.** A way to read a subscription's health — last delivery, missed
+count, active flag, and the owner it is actually attributed to — would let an
+application notice and say so. A documented catch-up entry for a subscriber that
+missed a block would be better still.
+
+**What we did about it.** Reactivity remains the primary path and we do not claim
+to have observed it working. `syncResolution(bytes32 marketId)` is the backstop:
+permissionless, takes only a market id, reads the outcome from the market
+contract itself, and runs the identical state machine behind the same
+idempotency key so a late delivery cannot double-fire. With it, a stuck sequence
+completed on chain (`docs/LIVE_FIRE.json`, `docs/FILL_EVIDENCE.json`).
 
 ## 2. Indexer schema drift broke a working query silently
 

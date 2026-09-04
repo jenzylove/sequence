@@ -1,0 +1,64 @@
+{
+  "note": "What moved in the transaction that carried the live-fire sequence, read from its receipt.",
+  "tx": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
+  "explorer": "https://shannon-explorer.somnia.network/tx/0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
+  "block": "479679928",
+  "status": "success",
+  "vault": "0xe0e08329A28347568E56e8184DbC7efDE8c7B2d6",
+  "vaultEvents": [
+    {
+      "event": "ResolutionSynced",
+      "args": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013774",
+        "by": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+        "questionId": "23208120061106271573776217556395916389417441623348050582556804712641395658075"
+      }
+    },
+    {
+      "event": "Triggered",
+      "args": {
+        "stepId": "0x85b14dbfb09edbe3182ab2feba11544834e32f0ed8a7e73418804cd1bef86532",
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013774",
+        "questionId": "23208120061106271573776217556395916389417441623348050582556804712641395658075",
+        "voided": false,
+        "winningOutcome": 1
+      }
+    },
+    {
+      "event": "Placed",
+      "args": {
+        "stepId": "0x85b14dbfb09edbe3182ab2feba11544834e32f0ed8a7e73418804cd1bef86532",
+        "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
+        "kind": 2,
+        "orderId": "110680464442257339085",
+        "notional": "2000000"
+      }
+    }
+  ],
+  "collateral": {
+    "movedToPool": "2000000",
+    "returnedToVault": "1920000",
+    "netSpent": "80000",
+    "readable": "$2.0000 out, $1.9200 back, net $0.0800",
+    "moves": [
+      {
+        "direction": "out",
+        "to": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
+        "amount": "2000000"
+      },
+      {
+        "direction": "in",
+        "from": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
+        "amount": "1920000"
+      }
+    ]
+  },
+  "order": {
+    "orderId": "110680464442257339085",
+    "side": "BUY_NO",
+    "notionalCommitted": "2000000",
+    "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5"
+  },
+  "outcomeTokenLogEntries": 2,
+  "claim": "The pool accepted the bounded order and $0.0800 of collateral was consumed net, which is consistent with a fill. The vault cannot observe fill quantity from inside the callback, so no fill size is asserted here beyond the collateral delta."
+}
