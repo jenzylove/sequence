@@ -9,7 +9,8 @@ export const STATUS_COPY = {
   ARMED: { label: "Live", tone: "live", blurb: "Waiting for the market to settle." },
   WAITING: { label: "Live", tone: "live", blurb: "Waiting for the market to settle." },
   TRIGGERED: { label: "Settling", tone: "live", blurb: "The market just settled. Working out the next trade." },
-  EXECUTED: { label: "Trade placed", tone: "done", blurb: "The follow-on trade went in." },
+  PLACED: { label: "Order placed", tone: "done", blurb: "The follow-on order was accepted by the market." },
+  PENDING: { label: "Queued", tone: "draft", blurb: "Waiting on the step before it. It only starts watching if that one trades." },
   SKIPPED: { label: "Stood down", tone: "done", blurb: "Your rules said not to trade this one." },
   EXPIRED: { label: "Expired", tone: "done", blurb: "The window closed before it could run." },
   CANCELLED: { label: "Cancelled", tone: "done", blurb: "You called it off." },
@@ -18,8 +19,8 @@ export const STATUS_COPY = {
 export const statusCopy = (label) => STATUS_COPY[label] || STATUS_COPY.NONE;
 
 // Which bucket a sequence belongs in on the dashboard.
-export const LIVE_STATUSES = ["ARMED", "WAITING", "TRIGGERED"];
-export const DONE_STATUSES = ["EXECUTED", "SKIPPED", "EXPIRED", "CANCELLED"];
+export const LIVE_STATUSES = ["ARMED", "WAITING", "TRIGGERED", "PENDING"];
+export const DONE_STATUSES = ["PLACED", "SKIPPED", "EXPIRED", "CANCELLED"];
 export const bucketFor = (statusLabel) => {
   if (LIVE_STATUSES.includes(statusLabel)) return "active";
   if (DONE_STATUSES.includes(statusLabel)) return "completed";
@@ -32,6 +33,7 @@ export const SKIP_REASON = {
   "no-clean-winner": "the result came back unclear, so nothing was risked",
   "questionId-mismatch": "the result did not match the market on file, so it was ignored",
   stop: "you set this result to stop, so it placed nothing",
+  "order-rejected": "the market would not accept the order, so nothing was risked",
   "step-cap": "the trade was larger than the limit you set for this step",
   "vault-cap": "it would have pushed you past your total risk limit",
 };

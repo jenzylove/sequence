@@ -33,7 +33,7 @@ if (!state) {
     const probe = await publicClient().readContract({
       address: SHANNON.vault, abi: vaultAbi, functionName: "steps", args: [`0x${"00".repeat(32)}`],
     });
-    abiMatches = Array.isArray(probe) && probe.length === 12;
+    abiMatches = Array.isArray(probe) && probe.length === 14;
   } catch { abiMatches = false; }
 
   add("11a", "deployment", abiMatches ? "OK" : "BLOCKED",
@@ -126,6 +126,11 @@ add("8", "execution", /clobStatus/.test(src("app/web/src/chain/markets.js")) ? "
 const topUp = /shortfall/.test(goLive);
 add("12", "setup", topUp ? "OK" : "BLOCKED",
   topUp ? "setup tops up only the shortfall of the stake" : "setup sends a full 32 SOM even when the vault already holds some");
+
+const factoryAddr = /factory:\s*"(0x[0-9a-fA-F]{40})"/.exec(src("app/web/src/chain/config.js"))?.[1];
+add("1b", "multi-user", factoryAddr ? "OK" : "BLOCKED",
+  factoryAddr ? `factory deployed at ${factoryAddr}` : "the factory exists in source but is not deployed or wired into the app",
+  factoryAddr ? null : "deploy the factory and resolve each wallet's vault through it");
 
 add("13", "integration", existsSync(join(web, "node_modules/@somnia-chain/markets-sdk")) ? "OK" : "OPEN",
   "the frontend talks to the indexer directly rather than through the markets SDK");

@@ -167,8 +167,14 @@ export function expireNsFor(step, now = Date.now()) {
   return defaultNs;
 }
 
-export function toVaultStep(step, now = Date.now()) {
+const ZERO32 = `0x${"00".repeat(32)}`;
+
+// nextStepId links the chain on chain: the vault arms it only after this step
+// actually places an order.
+export function toVaultStep(step, now = Date.now(), nextStepId = ZERO32) {
   return {
+    successorMarketId: step.successorMarketId || ZERO32,
+    nextStepId,
     triggerMarketId: step.triggerMarketId,
     pool: step.pool,
     price: step.price,

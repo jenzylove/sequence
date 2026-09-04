@@ -6,6 +6,11 @@ export const vaultAbi = [
     "type": "constructor",
     "inputs": [
       {
+        "name": "owner_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "module_",
         "type": "address",
         "internalType": "address"
@@ -108,6 +113,16 @@ export const vaultAbi = [
             "name": "notionalCap",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "successorMarketId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "nextStepId",
+            "type": "bytes32",
+            "internalType": "bytes32"
           },
           {
             "name": "orderId",
@@ -228,6 +243,25 @@ export const vaultAbi = [
   },
   {
     "type": "function",
+    "name": "outstandingByMarket",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "outstandingNotional",
     "inputs": [],
     "outputs": [
@@ -264,6 +298,109 @@ export const vaultAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "queueStep",
+    "inputs": [
+      {
+        "name": "stepId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "s",
+        "type": "tuple",
+        "internalType": "struct SequenceVault.Step",
+        "components": [
+          {
+            "name": "status",
+            "type": "uint8",
+            "internalType": "enum SequenceVault.Status"
+          },
+          {
+            "name": "triggerMarketId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "pool",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "price",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "quantity",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "expireNs",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "orderType",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "actionOnWin0",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "actionOnWin1",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "notionalCap",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "successorMarketId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "nextStepId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "orderId",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "winningOutcome",
+            "type": "uint8",
+            "internalType": "uint8"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "releaseExposure",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -391,6 +528,16 @@ export const vaultAbi = [
         "internalType": "uint256"
       },
       {
+        "name": "successorMarketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "nextStepId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
         "name": "orderId",
         "type": "uint128",
         "internalType": "uint128"
@@ -481,7 +628,58 @@ export const vaultAbi = [
   },
   {
     "type": "event",
-    "name": "Executed",
+    "name": "ChainAdvanced",
+    "inputs": [
+      {
+        "name": "fromStepId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "toStepId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ExposureReleased",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PausedSet",
+    "inputs": [
+      {
+        "name": "paused",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Placed",
     "inputs": [
       {
         "name": "stepId",
@@ -502,12 +700,6 @@ export const vaultAbi = [
         "internalType": "uint8"
       },
       {
-        "name": "success",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      },
-      {
         "name": "orderId",
         "type": "uint128",
         "indexed": false,
@@ -524,13 +716,25 @@ export const vaultAbi = [
   },
   {
     "type": "event",
-    "name": "PausedSet",
+    "name": "PlacementRejected",
     "inputs": [
       {
-        "name": "paused",
-        "type": "bool",
+        "name": "stepId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "kind",
+        "type": "uint8",
         "indexed": false,
-        "internalType": "bool"
+        "internalType": "uint8"
       }
     ],
     "anonymous": false
@@ -610,6 +814,25 @@ export const vaultAbi = [
     "inputs": [
       {
         "name": "stepId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "StepQueued",
+    "inputs": [
+      {
+        "name": "stepId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "triggerMarketId",
         "type": "bytes32",
         "indexed": true,
         "internalType": "bytes32"
@@ -777,6 +1000,17 @@ export const vaultAbi = [
   },
   {
     "type": "error",
+    "name": "NoExposure",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "NoSubscription",
     "inputs": []
   },
@@ -784,6 +1018,17 @@ export const vaultAbi = [
     "type": "error",
     "name": "NotOwner",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotQueued",
+    "inputs": [
+      {
+        "name": "stepId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
   },
   {
     "type": "error",

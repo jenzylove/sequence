@@ -4,7 +4,7 @@ import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
   validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor,
 } from "../strategy.js";
-import { armStep } from "../chain/vault.js";
+import { armStep, queueStep } from "../chain/vault.js";
 import { txUrl, addressUrl } from "../chain/config.js";
 import { upsertDraft, newDraftId } from "../lib/store.js";
 import ScreenHeader from "./ScreenHeader.jsx";
@@ -122,14 +122,33 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
     : errors.length ? errors[0].message
     : null;
 
+  // A sequence is a chain, not a set of independent triggers. Only the first
+  // step listens; the rest are queued and the vault arms each one itself, but
+  // only after the step before it actually placed an order. So "if NO, stop"
+  // genuinely stops everything after it.
   const activate = async () => {
     setArming(true);
     setArmResult(null);
     const done = [];
     try {
-      for (const s of strategy.steps) {
-        const stepId = onchainStepId(strategy, s);
-        const result = await armStep({ provider: wallet.provider, account: wallet.account, stepId, step: toVaultStep(s) });
+      const ids = strategy.steps.map((s) => onchainStepId(strategy, s));
+
+      // Queue from the back so each link exists before the one pointing at it.
+      for (let i = strategy.steps.length - 1; i >= 1; i -= 1) {
+        const s = strategy.steps[i];
+        const next = i + 1 < ids.length ? ids[i + 1] : undefined;
+        await queueStep({
+          provider: wallet.provider, account: wallet.account,
+          stepId: ids[i], step: toVaultStep(s, Date.now(), next),
+        });
+      }
+
+      for (const [i, s] of [strategy.steps[0]].entries()) {
+        const stepId = ids[i];
+        const result = await armStep({
+          provider: wallet.provider, account: wallet.account, stepId,
+          step: toVaultStep(s, Date.now(), ids[1]),
+        });
         const t = marketById(s.triggerMarketId);
         const n = marketById(s.successorMarketId);
         vault.track({
@@ -140,7 +159,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         });
         done.push(result.hash);
       }
-      setArmResult({ ok: true, hash: done[0], count: done.length });
+      setArmResult({ ok: true, hash: done[0], count: strategy.steps.length });
       onActivated?.(strategy);
     } catch (cause) {
       setArmResult({ ok: false, error: cause?.shortMessage || cause?.message || "That did not go through. Nothing was risked." });
@@ -385,7 +404,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
                   <p className="mt-3 text-[10px] font-semibold text-[#dc6e58]" role="alert">{armResult.error}</p>
                 )}
                 <p className="mt-3 text-[10px] leading-[1.55] text-[#a19ca5]">
-                  You approve {steps.length === 1 ? "one transaction" : `${steps.length} transactions, one per trade`}. Nothing moves until you do.
+                  You approve {steps.length === 1 ? "one transaction" : `${steps.length} transactions, one per trade`}. Only the first watches a market; each later one starts watching if the one before it trades.
                 </p>
               </div>
             </aside>

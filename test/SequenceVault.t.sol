@@ -28,7 +28,7 @@ contract SequenceVaultTest is Test {
 
     function setUp() public {
         module = new MockModule(); pool = new MockPool(); usdc = new MockERC20();
-        vault = new SequenceVault(address(module), address(usdc), 1_000_000_000); // big vault cap
+        vault = new SequenceVault(address(this), address(module), address(usdc), 1_000_000_000); // big vault cap
     }
     function _topics(uint256 q, bytes32 m) internal pure returns (bytes32[] memory t){
         t=new bytes32[](3); t[0]=Verified.ANSWER_DELIVERED_TOPIC0; t[1]=bytes32(q); t[2]=m;
@@ -58,7 +58,7 @@ contract SequenceVaultTest is Test {
         bytes32 sid=keccak256("s1"); bytes32 m=keccak256("mA"); module.setQid(m,42);
         _arm(sid,m,100,5,1000,true);   // notional 500 <= cap 1000
         _fire(42,m,_up());
-        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.EXECUTED));
+        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.PLACED));
         assertEq(pool.calls(),1); assertEq(pool.lastKind(),0);
         assertEq(vault.outstandingNotional(),500);
     }
@@ -144,7 +144,7 @@ contract SequenceVaultTest is Test {
         bytes32 sid=keccak256("stop3"); bytes32 m=keccak256("mStop3"); module.setQid(m,13);
         _armActions(sid,m,100,5,1000,BUY_YES,STOP);
         _fire(13,m,_up());                         // outcome 0 wins -> buys
-        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.EXECUTED));
+        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.PLACED));
         assertEq(pool.calls(),1); assertEq(pool.lastKind(),BUY_YES);
         assertEq(vault.outstandingNotional(),500);
     }
