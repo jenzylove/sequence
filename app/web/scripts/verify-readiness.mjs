@@ -28,17 +28,20 @@ const state = await readVaultState().catch(() => null);
 if (!state) {
   add("11", "deployment", "BLOCKED", `cannot read the vault at ${SHANNON.vault}`);
 } else {
-  let abiMatches = true;
+  let deployMatch = null;
   try {
-    const probe = await publicClient().readContract({
-      address: SHANNON.vault, abi: vaultAbi, functionName: "steps", args: [`0x${"00".repeat(32)}`],
-    });
-    abiMatches = Array.isArray(probe) && probe.length === 14;
-  } catch { abiMatches = false; }
+    const onchain = await publicClient().getCode({ address: SHANNON.vault });
+    const artifact = JSON.parse(readFileSync(join(repo, "out/SequenceVault.sol/SequenceVault.json"), "utf8"));
+    const local = artifact.deployedBytecode.object;
+    // Compare the tail, which carries the metadata hash of the exact source.
+    deployMatch = onchain.slice(-120) === local.slice(-120);
+  } catch { deployMatch = null; }
 
-  add("11a", "deployment", abiMatches ? "OK" : "BLOCKED",
-    abiMatches ? `deployed contract matches this build (${SHANNON.vault})` : "deployed contract is a version behind this build",
-    abiMatches ? null : "run app/web/scripts/deploy-vault.sh");
+  add("11a", "deployment", deployMatch === true ? "OK" : deployMatch === false ? "BLOCKED" : "CHECK",
+    deployMatch === true ? `deployed bytecode is this build (${SHANNON.vault})`
+      : deployMatch === false ? "deployed bytecode differs from this build"
+      : "could not read the deployed code, so this is unverified right now",
+    deployMatch === false ? "redeploy with app/web/scripts/migrate-phase2.sh" : null);
 
   add("11b", "reactivity", state.subscribed ? "OK" : "BLOCKED",
     state.subscribed ? `subscription ${state.subscriptionId} is live` : "no subscription: settlements will never reach the vault",
