@@ -1,44 +1,94 @@
 {
-  "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
-  "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
-  "vault": "0xf908D5e59d38dF8Fb0739dbE759B373D83aF20Ed",
-  "factory": "0x5d2d9862E1B442b303b64fDB677f6e041425dB3c",
-  "subscriptionId": "15952225",
-  "stepId": "0x87070d6b77706565c30a68719788980513428de1e4f2a92e4fd7f1229e2ca6c5",
-  "trigger": {
-    "marketId": "0x0000000000000000000000000000000000000000000000000000000000013524",
-    "name": "BTC 15m",
-    "expiry": 1788529500,
-    "question": "BTC closes at or above its opening price"
-  },
-  "successor": {
-    "marketId": "0x00000000000000000000000000000000000000000000000000000000000134ca",
-    "name": "BTC 1h",
-    "pool": "0x26f7accb62f26d8e183b6f7eb7701e7254564b13",
-    "expiry": 1788530400
-  },
-  "order": {
-    "price": "535900",
-    "quantity": "3",
-    "notional": "1607700",
-    "cap": "2000000"
-  },
-  "armedAt": "2026-09-04T13:35:58.279Z",
-  "armedTx": "0x600dc906fee0c2a21ece2097d07e0af08cb729eb342f549b38b31da8c8b93193",
-  "armedBlock": "479558446",
-  "timeline": [
+  "runs": [
     {
-      "event": "StepArmed",
-      "args": {
-        "stepId": "0x87070d6b77706565c30a68719788980513428de1e4f2a92e4fd7f1229e2ca6c5",
-        "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013524",
-        "pool": "0x26F7acCB62F26d8E183B6F7Eb7701e7254564B13"
+      "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
+      "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+      "vault": "0xf908D5e59d38dF8Fb0739dbE759B373D83aF20Ed",
+      "factory": "0x5d2d9862E1B442b303b64fDB677f6e041425dB3c",
+      "subscriptionId": "15952225",
+      "stepId": "0x87070d6b77706565c30a68719788980513428de1e4f2a92e4fd7f1229e2ca6c5",
+      "trigger": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013524",
+        "name": "BTC 15m",
+        "expiry": 1788529500,
+        "question": "BTC closes at or above its opening price"
       },
-      "blockNumber": "479558446",
-      "txHash": "0x600dc906fee0c2a21ece2097d07e0af08cb729eb342f549b38b31da8c8b93193",
-      "logIndex": 0,
-      "at": "2026-09-04T13:35:58.494Z"
+      "successor": {
+        "marketId": "0x00000000000000000000000000000000000000000000000000000000000134ca",
+        "name": "BTC 1h",
+        "pool": "0x26f7accb62f26d8e183b6f7eb7701e7254564b13",
+        "expiry": 1788530400
+      },
+      "order": {
+        "price": "535900",
+        "quantity": "3",
+        "notional": "1607700",
+        "cap": "2000000"
+      },
+      "armedAt": "2026-09-04T13:35:58.279Z",
+      "armedTx": "0x600dc906fee0c2a21ece2097d07e0af08cb729eb342f549b38b31da8c8b93193",
+      "armedBlock": "479558446",
+      "timeline": [
+        {
+          "event": "StepArmed",
+          "args": {
+            "stepId": "0x87070d6b77706565c30a68719788980513428de1e4f2a92e4fd7f1229e2ca6c5",
+            "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013524",
+            "pool": "0x26F7acCB62F26d8E183B6F7Eb7701e7254564B13"
+          },
+          "blockNumber": "479558446",
+          "txHash": "0x600dc906fee0c2a21ece2097d07e0af08cb729eb342f549b38b31da8c8b93193",
+          "logIndex": 0,
+          "at": "2026-09-04T13:35:58.494Z"
+        }
+      ],
+      "outcome": "timed out waiting for settlement",
+      "finalStatus": "ARMED"
+    },
+    {
+      "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
+      "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+      "vault": "0xf908D5e59d38dF8Fb0739dbE759B373D83aF20Ed",
+      "factory": "0x5d2d9862E1B442b303b64fDB677f6e041425dB3c",
+      "subscriptionId": "15952225",
+      "stepId": "0xdf7f620d5cd0105484fe28afb4a4c58c90cd45b9038d4f29c86f3a50d7b39b5a",
+      "trigger": {
+        "marketId": "0x000000000000000000000000000000000000000000000000000000000001357d",
+        "name": "ETH 1h",
+        "expiry": 1788534000,
+        "question": "ETH closes at or above its opening price"
+      },
+      "successor": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013417",
+        "name": "ETH 4h",
+        "pool": "0xf61e22cd595be7218b18f56587b02074eecf0206",
+        "expiry": 1788537600
+      },
+      "order": {
+        "price": "23000",
+        "quantity": "86",
+        "notional": "1978000",
+        "cap": "2000000"
+      },
+      "armedAt": "2026-09-04T14:43:46.055Z",
+      "armedTx": "0xd6f90f557cac26c0311b47c0fc669a1c949ea1578f78ca462ff652c39d8008d7",
+      "armedBlock": "479599119",
+      "timeline": [
+        {
+          "event": "StepArmed",
+          "args": {
+            "stepId": "0xdf7f620d5cd0105484fe28afb4a4c58c90cd45b9038d4f29c86f3a50d7b39b5a",
+            "triggerMarketId": "0x000000000000000000000000000000000000000000000000000000000001357d",
+            "pool": "0xF61E22cD595be7218b18F56587b02074eecF0206"
+          },
+          "blockNumber": "479599119",
+          "txHash": "0xd6f90f557cac26c0311b47c0fc669a1c949ea1578f78ca462ff652c39d8008d7",
+          "logIndex": 0,
+          "at": "2026-09-04T14:43:57.329Z"
+        }
+      ],
+      "outcome": "waiting",
+      "finalStatus": "ARMED"
     }
-  ],
-  "outcome": "waiting"
+  ]
 }
