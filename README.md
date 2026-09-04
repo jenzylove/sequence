@@ -67,6 +67,8 @@ identifier, pool address, event name and transaction hash lives behind
 | `app/web/src/components/` | Desk, command surface, builder, onchain details |
 | `app/web/` | The product frontend |
 | `docs/VERIFIED.md` | Provenance for every interface fact and address |
+| `docs/FINDINGS.md` | Integration feedback for the DreamDEX and Somnia teams |
+| `docs/LIVE_FIRE.json` | The recorded live-fire run, written by the harness |
 
 ## Where the data comes from
 
