@@ -7,7 +7,7 @@ import { SHANNON, shannonChain } from "./config.js";
 import { vaultAbi } from "./abi.js";
 import { erc20Abi } from "./erc20.js";
 
-export const STATUS = ["NONE", "ARMED", "WAITING", "TRIGGERED", "EXECUTED", "SKIPPED", "EXPIRED", "CANCELLED"];
+export const STATUS = ["NONE", "ARMED", "WAITING", "TRIGGERED", "PLACED", "SKIPPED", "EXPIRED", "CANCELLED", "PENDING"];
 
 export function publicClient() {
   return createPublicClient({ chain: shannonChain, transport: http(SHANNON.rpc) });
@@ -44,7 +44,8 @@ export async function readVaultState(vault = SHANNON.vault) {
 export async function readStep(stepId, vault = SHANNON.vault) {
   const client = publicClient();
   const raw = await client.readContract({ address: vault, abi: vaultAbi, functionName: "steps", args: [stepId] });
-  const [status, triggerMarketId, pool, price, quantity, expireNs, orderType, actionOnWin0, actionOnWin1, notionalCap, orderId, winningOutcome] = raw;
+  const [status, triggerMarketId, pool, price, quantity, expireNs, orderType, actionOnWin0, actionOnWin1,
+    notionalCap, successorMarketId, nextStepId, orderId, winningOutcome] = raw;
   return {
     stepId,
     status: Number(status),
@@ -52,7 +53,7 @@ export async function readStep(stepId, vault = SHANNON.vault) {
     triggerMarketId, pool, price, quantity, expireNs,
     orderType: Number(orderType),
     actionOnWin0: Number(actionOnWin0), actionOnWin1: Number(actionOnWin1),
-    notionalCap,
+    notionalCap, successorMarketId, nextStepId,
     orderId, winningOutcome: Number(winningOutcome),
     exists: Number(status) !== 0,
   };
@@ -119,6 +120,8 @@ export function encodeArmStep(stepId, step) {
       actionOnWin0: step.actionOnWin0,
       actionOnWin1: step.actionOnWin1,
       notionalCap: step.notionalCap,
+      successorMarketId: step.successorMarketId,
+      nextStepId: step.nextStepId,
       orderId: 0n,
       winningOutcome: 0,
     }],
@@ -140,6 +143,8 @@ export async function armStep({ provider, account, stepId, step, vault = SHANNON
     actionOnWin0: step.actionOnWin0,
     actionOnWin1: step.actionOnWin1,
     notionalCap: step.notionalCap,
+    successorMarketId: step.successorMarketId,
+    nextStepId: step.nextStepId,
     orderId: 0n,
     winningOutcome: 0,
   }];
@@ -174,5 +179,6 @@ export async function readNativeBalance(address) {
 
 export const subscribeAllMarkets = (opts) => sendVaultTx({ ...opts, functionName: "subscribeAllMarkets", args: [] });
 export const approvePool = (opts) => sendVaultTx({ ...opts, functionName: "approvePool", args: [opts.pool, opts.amount] });
+export const queueStep = (opts) => sendVaultTx({ ...opts, functionName: "queueStep", args: [opts.stepId, opts.step] });
 export const cancelStep = (opts) => sendVaultTx({ ...opts, functionName: "cancelStep", args: [opts.stepId] });
 export const setPaused = (opts) => sendVaultTx({ ...opts, functionName: "setPaused", args: [opts.paused] });

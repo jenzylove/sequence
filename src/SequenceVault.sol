@@ -32,6 +32,8 @@ contract SequenceVault is SomniaEventHandler {
     error NoSubscription();
     error BadState(Status have, Status need);
     error BadAction(uint8 action);
+    error NotQueued(bytes32 stepId);
+    error NoExposure(bytes32 marketId);
 
     // ---- per-outcome actions ----
     // What the vault does when an outcome wins. The two buy values are the
@@ -48,7 +50,11 @@ contract SequenceVault is SomniaEventHandler {
     }
 
     // ---- state machine ----
-    enum Status { NONE, ARMED, WAITING, TRIGGERED, EXECUTED, SKIPPED, EXPIRED, CANCELLED }
+    // PLACED, not EXECUTED: the pool accepted the order. A blockchain success
+    // is not proof of a fill, and the vault cannot observe fills from inside the
+    // reactive callback, so it never claims more than it knows. PENDING is a
+    // step registered for the chain but deliberately not yet listening.
+    enum Status { NONE, ARMED, WAITING, TRIGGERED, PLACED, SKIPPED, EXPIRED, CANCELLED, PENDING }
 
     struct Step {
         Status status;
@@ -61,7 +67,10 @@ contract SequenceVault is SomniaEventHandler {
         uint8   actionOnWin0;      // ACT_BUY_YES | ACT_BUY_NO | ACT_STOP
         uint8   actionOnWin1;      // ACT_BUY_YES | ACT_BUY_NO | ACT_STOP
         uint256 notionalCap;       // max price*qty this step may commit (raw)
-        uint128 orderId;           // set once EXECUTED
+        bytes32 successorMarketId; // market the order is placed INTO; its own
+                                   // resolution releases this step's exposure
+        bytes32 nextStepId;        // armed only after this step actually places
+        uint128 orderId;           // set once PLACED
         uint8   winningOutcome;    // recorded on trigger
     }
 
@@ -82,12 +91,20 @@ contract SequenceVault is SomniaEventHandler {
     mapping(bytes32 => bool) public consumed;
     // reverse index: which stepId is armed for a triggerMarketId
     mapping(bytes32 => bytes32) public stepForMarket;
+    // exposure committed into a successor market, released when that market
+    // itself resolves. Without this the vault-wide cap only ever ratchets up
+    // and a rolling sequence eventually blocks itself.
+    mapping(bytes32 => uint256) public outstandingByMarket;
 
     // ---- events (the execution timeline the frontend renders) ----
     event StepArmed(bytes32 indexed stepId, bytes32 indexed triggerMarketId, address pool);
     event StepWaiting(bytes32 indexed stepId, uint256 subscriptionId);
     event Triggered(bytes32 indexed stepId, bytes32 indexed marketId, uint256 questionId, bool voided, uint8 winningOutcome);
-    event Executed(bytes32 indexed stepId, address indexed pool, uint8 kind, bool success, uint128 orderId, uint256 notional);
+    event Placed(bytes32 indexed stepId, address indexed pool, uint8 kind, uint128 orderId, uint256 notional);
+    event PlacementRejected(bytes32 indexed stepId, address indexed pool, uint8 kind);
+    event StepQueued(bytes32 indexed stepId, bytes32 indexed triggerMarketId);
+    event ChainAdvanced(bytes32 indexed fromStepId, bytes32 indexed toStepId);
+    event ExposureReleased(bytes32 indexed marketId, uint256 amount);
     event Skipped(bytes32 indexed stepId, bytes32 indexed marketId, string reason);
     event StepCancelled(bytes32 indexed stepId);
     event PausedSet(bool paused);
@@ -98,8 +115,10 @@ contract SequenceVault is SomniaEventHandler {
 
     receive() external payable {}
 
-    constructor(address module_, address collateral_, uint256 maxOutstanding_) {
-        owner = msg.sender;
+    // owner_ is passed rather than taken from msg.sender so a factory can deploy
+    // a vault that belongs to the caller, not to the factory.
+    constructor(address owner_, address module_, address collateral_, uint256 maxOutstanding_) {
+        owner = owner_ == address(0) ? msg.sender : owner_;
         module = IBinaryMarketsModule(module_);
         collateral = IERC20(collateral_);
         maxOutstandingNotional = maxOutstanding_;
@@ -140,6 +159,35 @@ contract SequenceVault is SomniaEventHandler {
         emit StepArmed(stepId, s.triggerMarketId, s.pool);
     }
 
+    // Register a later link in a chain WITHOUT listening for its market. It only
+    // starts listening if the step before it actually places an order, which is
+    // what makes a sequence conditional rather than a set of independent
+    // triggers armed up front.
+    function queueStep(bytes32 stepId, Step calldata s) external onlyOwner {
+        if (!_validAction(s.actionOnWin0)) revert BadAction(s.actionOnWin0);
+        if (!_validAction(s.actionOnWin1)) revert BadAction(s.actionOnWin1);
+        uint256 notional = s.price * s.quantity;
+        if (notional > s.notionalCap) revert CapExceeded(notional, s.notionalCap);
+
+        Step memory x = s;
+        x.status = Status.PENDING;
+        x.orderId = 0;
+        x.winningOutcome = 0;
+        steps[stepId] = x;
+        // deliberately NOT written into stepForMarket
+        emit StepQueued(stepId, s.triggerMarketId);
+    }
+
+    // Release exposure by hand if a successor market never delivers a
+    // resolution. Owner-only, and it can only release what was committed.
+    function releaseExposure(bytes32 marketId) external onlyOwner {
+        uint256 amount = outstandingByMarket[marketId];
+        if (amount == 0) revert NoExposure(marketId);
+        outstandingByMarket[marketId] = 0;
+        outstandingNotional -= amount;
+        emit ExposureReleased(marketId, amount);
+    }
+
     function cancelStep(bytes32 stepId) external onlyOwner {
         Step storage st = steps[stepId];
         if (st.status == Status.NONE) revert BadState(st.status, Status.ARMED);
@@ -176,6 +224,16 @@ contract SequenceVault is SomniaEventHandler {
 
         uint256 questionId = uint256(topics[1]);
         bytes32 marketId = topics[2];
+
+        // A market this vault holds exposure in has settled: that exposure is no
+        // longer outstanding. Done before the idempotency gate because releasing
+        // is about the successor market, not about a trigger firing.
+        uint256 committed = outstandingByMarket[marketId];
+        if (committed != 0) {
+            outstandingByMarket[marketId] = 0;
+            outstandingNotional -= committed;
+            emit ExposureReleased(marketId, committed);
+        }
 
         bytes32 ck = keccak256(abi.encodePacked(marketId, questionId));
         if (consumed[ck]) return;                 // idempotent: already handled
@@ -226,10 +284,37 @@ contract SequenceVault is SomniaEventHandler {
         (bool ok, uint128 orderId) = IBinaryPool(st.pool).placeBinaryOrder(
             kind, st.price, st.quantity, st.expireNs, st.orderType, 0, address(0), 0, 0
         );
+
+        // The pool refused the order. Nothing was placed, so nothing is
+        // committed and the chain does not advance. Saying EXECUTED here would
+        // be a lie the interface would then repeat.
+        if (!ok) {
+            st.status = Status.SKIPPED;
+            emit PlacementRejected(stepId, st.pool, kind);
+            emit Skipped(stepId, marketId, "order-rejected");
+            return;
+        }
+
         st.orderId = orderId;
-        st.status = Status.EXECUTED;
+        st.status = Status.PLACED;
         outstandingNotional += notional;
-        emit Executed(stepId, st.pool, kind, ok, orderId, notional);
+        // Attribute the exposure to the market it was placed into, so that
+        // market's own resolution releases it.
+        outstandingByMarket[st.successorMarketId] += notional;
+        emit Placed(stepId, st.pool, kind, orderId, notional);
+
+        // Only a real placement advances the chain. A stop, a skip or a
+        // rejection ends it, which is what "if NO, stop" has to mean.
+        bytes32 nextId = st.nextStepId;
+        if (nextId != bytes32(0)) {
+            Step storage nx = steps[nextId];
+            if (nx.status == Status.PENDING) {
+                nx.status = Status.ARMED;
+                stepForMarket[nx.triggerMarketId] = nextId;
+                emit StepArmed(nextId, nx.triggerMarketId, nx.pool);
+                emit ChainAdvanced(stepId, nextId);
+            }
+        }
     }
 
     function _winner(uint256[] memory nums, bool voided) internal pure returns (uint8) {
