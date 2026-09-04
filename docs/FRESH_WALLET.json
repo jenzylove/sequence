@@ -1,0 +1,72 @@
+{
+  "note": "A genuinely new wallet completing the journey and signing for itself. No address injection.",
+  "freshWallet": "0x267E598392883F3037E90Fd1f34b12BC53FfdBDF",
+  "freshVault": "0xc14ceD544773693cF2CD25a08FCe4C951D372197",
+  "authorWallet": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+  "authorVault": "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
+  "factory": "0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc",
+  "riskLimit": "3000000",
+  "fundedWith": "0.4 SOM (gas only)",
+  "stepId": "0xb2b6f5afe7e3a327e0d1c21bfd235f832bb875d10aa24e36deef577504454527",
+  "order": {
+    "price": "999000",
+    "quantity": "1001000",
+    "cost": "999999"
+  },
+  "stepStatus": 1,
+  "transactions": {
+    "funded": "0x0aac7a295309363f48c2a1644221b5999e3271766fd1615c20c908297ad9f81d",
+    "createdVault": "0x3e4db16815375ddc1c7d62862c9bb5e8d7de32262731f3cfcd4dec90c3526cde",
+    "activated": "0x86cf1d4818ec98ea5e429aba48e648e9ff9cda1197be1d3ff3bfd198c417c014"
+  },
+  "armedBlock": "479781071",
+  "at": "2026-09-04T19:47:08.633Z",
+  "steps": [
+    {
+      "name": "starts with no account",
+      "detail": "factory.vaultFor() returns the zero address, so the app offers to create one",
+      "tx": null
+    },
+    {
+      "name": "funded with gas only",
+      "detail": "0.4 SOM, no collateral and no stake",
+      "tx": "0x0aac7a295309363f48c2a1644221b5999e3271766fd1615c20c908297ad9f81d"
+    },
+    {
+      "name": "created its own account",
+      "detail": "0xc14ceD544773693cF2CD25a08FCe4C951D372197",
+      "tx": "0x3e4db16815375ddc1c7d62862c9bb5e8d7de32262731f3cfcd4dec90c3526cde"
+    },
+    {
+      "name": "owns it exclusively",
+      "detail": "owner is the fresh wallet; the author's vault is a different address (0x78dcAD22f904AE1cE156f4409D312C1438C93ef2)",
+      "tx": null
+    },
+    {
+      "name": "is isolated",
+      "detail": "the author's wallet is rejected by the fresh wallet's vault",
+      "tx": null
+    },
+    {
+      "name": "carries its own risk limit",
+      "detail": "$3.000, chosen at creation, not inherited",
+      "tx": null
+    },
+    {
+      "name": "built a sequence",
+      "detail": "watch BTC 5m -> trade BTC 1h, 1001000 @ $0.999 = $1.000",
+      "tx": null
+    },
+    {
+      "name": "simulated within its limits",
+      "detail": "$1.000 is inside both the $1.000 budget and the $3.000 account limit",
+      "tx": null
+    },
+    {
+      "name": "activated it, signing for itself",
+      "detail": "step status 1 (1 = live and waiting)",
+      "tx": "0x86cf1d4818ec98ea5e429aba48e648e9ff9cda1197be1d3ff3bfd198c417c014"
+    }
+  ],
+  "notFunded": "This vault holds no collateral and no subscription stake, so it can arm but not execute. That is stated rather than implied."
+}

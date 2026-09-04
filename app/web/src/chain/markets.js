@@ -241,3 +241,8 @@ export async function fetchPoolParams(pool, client) {
   ]);
   return { tickSize: params.tickSize, minQuantity: params.minQuantity, lotSize: params.lotSize };
 }
+
+// Used before a pool has answered. Chosen to match what Shannon's binary pools
+// actually report, so a budget typed before the read lands still produces a
+// sane order rather than a quantity of 4.
+export const DEFAULT_POOL_PARAMS = { tickSize: 1000n, minQuantity: 1000n, lotSize: 1000n };

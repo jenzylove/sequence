@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../sim.js";
 import {
-  ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, loadStrategy, saveStrategy,
-  validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor,
+  ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, purgeLegacyStrategy,
+  validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor, isCadenceSubstitution,
 } from "../strategy.js";
-import { armStep, queueStep, ensurePoolAllowances } from "../chain/vault.js";
+import { armStep, queueStep, ensurePoolAllowances, publicClient } from "../chain/vault.js";
+import {
+  fetchBook, crossingPrice, fetchPoolParams, sizeOrder, orderCost, DEFAULT_POOL_PARAMS,
+} from "../chain/markets.js";
+import { checkTradable } from "../chain/module.js";
 import { txUrl, addressUrl } from "../chain/config.js";
-import { upsertDraft, newDraftId } from "../lib/store.js";
+import { upsertDraft, newDraftId, latestDraft } from "../lib/store.js";
 import ScreenHeader from "./ScreenHeader.jsx";
 import CommandBar from "./CommandBar.jsx";
 import {
@@ -19,7 +23,7 @@ import {
 //   how much can I lose, and what exactly happens after I activate.
 // Contract vocabulary lives only under "Onchain details".
 export default function Builder({ markets, vault, wallet, initialDraft = null, onWallet, onExit, onActivated }) {
-  const [strategy, setStrategy] = useState(() => initialDraft || loadStrategy());
+  const [strategy, setStrategy] = useState(() => initialDraft || latestDraft(wallet.account));
   const [selected, setSelected] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
   const [arming, setArming] = useState(false);
@@ -27,6 +31,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const [book, setBook] = useState(null);
   const [tradable, setTradable] = useState(null);
   const [sizeProblem, setSizeProblem] = useState(null);
+  const [poolParams, setPoolParams] = useState(null);
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -43,11 +48,19 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   }, [strategy, markets.status, markets.open, vault.state]);
 
   useEffect(() => { if (initialDraft) setStrategy(initialDraft); }, [initialDraft]);
+  // Persist only under the connected wallet. There is no global copy, so
+  // switching accounts cannot restore the previous one's work.
+  useEffect(() => { purgeLegacyStrategy(); }, []);
   useEffect(() => {
-    if (!strategy) return;
-    saveStrategy(strategy);
-    if (strategy.id) upsertDraft(wallet.account, strategy);
-  }, [strategy]);
+    if (!strategy || !wallet.account) return;
+    upsertDraft(wallet.account, strategy.id ? strategy : { ...strategy, id: newDraftId() });
+  }, [strategy, wallet.account]);
+
+  // A different wallet means a different desk: drop what the previous one had.
+  useEffect(() => {
+    setStrategy(initialDraft || latestDraft(wallet.account));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet.account]);
   useEffect(() => {
     if (!strategy?.steps.length) return;
     if (!strategy.steps.some((s) => s.key === selected)) setSelected(strategy.steps[0].key);
@@ -81,13 +94,21 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         // than returning false when an order misses them.
         const params = await fetchPoolParams(step.pool, publicClient());
         if (!live) return;
-        const sized = sizeOrder({ price: cross, budget: step.notionalCap, ...params });
-        if (!sized) { setSizeProblem(`One lot of the smallest tradable order costs more than this amount.`); return; }
-        setSizeProblem(null);
-        setStrategy((cur) => ({
-          ...cur,
-          steps: cur.steps.map((s) => (s.key === step.key ? { ...s, price: sized.price, quantity: sized.quantity } : s)),
-        }));
+        setPoolParams(params);
+        // Size against the budget as it is NOW, not as it was when this effect
+        // started. The fetch takes long enough for a trader to have typed a new
+        // amount in the meantime, and using the stale one silently replaced what
+        // they asked for with a larger order.
+        setStrategy((cur) => {
+          const current = cur.steps.find((s) => s.key === step.key);
+          if (!current) return cur;
+          const sized = sizeOrder({ price: cross, budget: current.notionalCap, ...params });
+          if (!sized) return cur;
+          return {
+            ...cur,
+            steps: cur.steps.map((s) => (s.key === step.key ? { ...s, price: sized.price, quantity: sized.quantity } : s)),
+          };
+        });
       } catch { if (live) setBook(null); }
     })();
     return () => { live = false; };
@@ -105,6 +126,14 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
     const m = marketById(marketId);
     if (!m) return;
     const next = nextWindowFor(markets.open, m);
+    if (!next) {
+      setSizeProblem(`No later ${m.asset} market is open to continue into yet. Pick another market, or wait for the next window.`);
+      update(key, { triggerMarketId: m.marketId, triggerLabel: m.question, triggerExpiry: m.expiry,
+        successorMarketId: "", successorLabel: "", successorExpiry: null, pool: "" });
+      setArmResult(null);
+      return;
+    }
+    setSizeProblem(null);
     update(key, {
       triggerMarketId: m.marketId, triggerLabel: m.question, triggerExpiry: m.expiry,
       ...(next ? { successorMarketId: next.marketId, successorLabel: next.question, successorExpiry: next.expiry, pool: next.pool } : {}),
@@ -115,14 +144,30 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   // "How much on this trade" is what a trader sets. Contracts come in whole
   // lots, so the amount is rounded down to what can actually be bought, and the
   // cap is set to exactly that. One number, shown everywhere, always true.
+  // The amount a trader types is a budget. Turning it into an order is the
+  // pool's business: a price on its tick, a quantity on its lot and at or above
+  // its minimum. That arithmetic lives in sizeOrder and is used here rather than
+  // rewritten, because a second copy is a second chance to get the units wrong.
   const setStake = (key, dollars) => {
     const s = steps.find((x) => x.key === key);
     if (!s) return;
+    const budget = BigInt(Math.max(0, Math.round(Number(dollars || 0) * 1e6)));
     const price = s.price > 0n ? s.price : 500000n;
-    const target = BigInt(Math.max(0, Math.round(Number(dollars || 0) * 1e6)));
-    let quantity = target / price;
-    if (quantity < 1n) quantity = 1n;
-    update(key, { quantity, notionalCap: price * quantity });
+    const params = poolParams || DEFAULT_POOL_PARAMS;
+
+    const sized = sizeOrder({ price, budget, ...params });
+    if (!sized) {
+      // Leaving the previous, larger order in place would show an amount above
+      // what the trader just asked for. The order is cleared instead, which also
+      // blocks activation until the amount is workable.
+      setSizeProblem("That is less than the smallest order this market accepts. Raise the amount.");
+      update(key, { quantity: 0n, notionalCap: budget });
+      setArmResult(null);
+      return;
+    }
+    setSizeProblem(null);
+    // notionalCap is the budget the trader set; the order sits at or under it.
+    update(key, { price: sized.price, quantity: sized.quantity, notionalCap: budget });
     setArmResult(null);
   };
 
@@ -330,6 +375,12 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
               </Question>
 
               <Question n={2} title="What should happen when it settles?">
+                {successor && isCadenceSubstitution(trigger, successor) && (
+                  <p className="mb-3 rounded-sm border-l-[3px] border-[#ff9b7f] bg-[#fff8f4] p-3 text-[10px] leading-[1.6] text-[#8a5f47]">
+                    No {marketName(trigger)} window is open after this one, so the follow-on trade goes into
+                    the next {marketName(successor)} instead. That is the market it will actually trade.
+                  </p>
+                )}
                 <div className="space-y-3">
                   <BranchRow
                     label="If YES" tone="up"

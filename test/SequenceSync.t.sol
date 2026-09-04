@@ -152,6 +152,90 @@ contract SequenceSyncTest is Test {
         assertEq(pool.calls(), 1);
     }
 
+    // ---- a queued step must not lose its own resolution ----------------------
+
+    /// The race: a queued step's market resolves BEFORE the link ahead of it
+    /// arms it. If that resolution were consumed while nothing was listening,
+    /// the step would activate onto a market whose one resolution had already
+    /// been spent and would wait for ever.
+    function test_a_resolution_nobody_is_listening_for_is_not_consumed() public {
+        bytes32 second = keccak256("second");
+        bytes32 m2 = keccak256("market2");
+        SyncMarket market2 = new SyncMarket();
+        module.set(m2, 777, address(market2));
+
+        SequenceVault.Step memory b;
+        b.triggerMarketId = m2; b.pool = address(pool);
+        b.price = 100000; b.quantity = 5_000000; b.notionalCap = 1_000000;
+        b.expireNs = uint64(block.timestamp + 3600) * 1e9;
+        b.orderType = 2; b.actionOnWin0 = BUY_YES; b.actionOnWin1 = BUY_NO;
+        b.successorMarketId = keccak256("successor2");
+        vault.queueStep(second, b);
+
+        SequenceVault.Step memory a;
+        a.triggerMarketId = M; a.pool = address(pool);
+        a.price = 100000; a.quantity = 5_000000; a.notionalCap = 1_000000;
+        a.expireNs = uint64(block.timestamp + 3600) * 1e9;
+        a.orderType = 2; a.actionOnWin0 = BUY_YES; a.actionOnWin1 = BUY_NO;
+        a.successorMarketId = keccak256("successor");
+        a.nextStepId = second;
+        vault.armStep(SID, a);
+
+        // The queued step's market resolves early, while it is still PENDING.
+        market2.resolve(_up());
+        vm.prank(PRECOMPILE);
+        bytes32[] memory t2 = new bytes32[](3);
+        t2[0] = Verified.ANSWER_DELIVERED_TOPIC0; t2[1] = bytes32(uint256(777)); t2[2] = m2;
+        vault.onEvent(HUB, t2, abi.encode(uint32(1), _up(), false));
+
+        assertEq(uint256(vault.stepStatus(second)), uint256(SequenceVault.Status.PENDING));
+        assertEq(pool.calls(), 0);
+        // Crucially, that resolution was NOT spent.
+        assertEq(vault.consumed(keccak256(abi.encodePacked(m2, uint256(777)))), false);
+
+        // The first step now places and advances the chain.
+        market.resolve(_up());
+        vault.syncResolution(M);
+        assertEq(uint256(vault.stepStatus(second)), uint256(SequenceVault.Status.ARMED));
+
+        // The queued step can still act on the resolution that already happened.
+        vault.syncResolution(m2);
+        assertEq(uint256(vault.stepStatus(second)), uint256(SequenceVault.Status.PLACED));
+        assertEq(pool.calls(), 2);
+    }
+
+    function test_syncing_an_already_resolved_market_acts_exactly_once() public {
+        _arm(BUY_YES, BUY_NO);
+        market.resolve(_up());
+        vault.syncResolution(M);
+        vault.syncResolution(M);
+        vault.syncResolution(M);
+        assertEq(pool.calls(), 1);
+    }
+
+    function test_a_late_delivery_after_a_sync_cannot_double_fire() public {
+        _arm(BUY_YES, BUY_NO);
+        market.resolve(_up());
+        vault.syncResolution(M);
+
+        vm.prank(PRECOMPILE);
+        vault.onEvent(HUB, _topics(), abi.encode(uint32(1), _up(), false));
+        assertEq(pool.calls(), 1);
+        assertEq(uint256(vault.stepStatus(SID)), uint256(SequenceVault.Status.PLACED));
+    }
+
+    function test_a_delivery_before_arming_does_not_burn_the_resolution() public {
+        // Nothing armed yet at all.
+        market.resolve(_up());
+        vm.prank(PRECOMPILE);
+        vault.onEvent(HUB, _topics(), abi.encode(uint32(1), _up(), false));
+        assertEq(vault.consumed(keccak256(abi.encodePacked(M, Q))), false);
+
+        _arm(BUY_YES, BUY_NO);
+        vault.syncResolution(M);
+        assertEq(uint256(vault.stepStatus(SID)), uint256(SequenceVault.Status.PLACED));
+    }
+
     // ---- it obeys every rule the reactive path obeys -------------------------
 
     function test_sync_honours_a_stop_branch() public {

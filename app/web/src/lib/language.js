@@ -148,7 +148,10 @@ export const asOdds = (raw) => (raw === null || raw === undefined ? null : Math.
 // trader's choice, and this is the single place that mapping is described.
 export function branchActions(step, successorMarket) {
   const next = marketName(successorMarket) || step.successorLabel || "the next market";
-  const size = money(step.price * step.quantity);
+  // Prices are 6dp fractions and quantities 6dp base units, so the raw product
+  // overstates the cost by a million. This is what the trader reads, so it has
+  // to be the same number the contract commits.
+  const size = money((step.price * step.quantity) / 1000000n);
   const describe = (action) => {
     if (action === 255) {
       return { stop: true, side: null, text: "Stop", verb: "stops and places nothing", size: "—" };
