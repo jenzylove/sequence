@@ -143,3 +143,52 @@ export async function fetchSpotContext() {
   }
   return out;
 }
+
+// The live book for one market.
+//
+// The venue quotes a binary market in YES terms only: every resting order is
+// BUY_YES or SELL_YES. NO is the complement, so buying NO at price p requires
+// someone willing to buy YES at (1 - p). That makes the best NO ask the
+// complement of the best YES bid, which is how it is derived here rather than
+// guessed.
+export async function fetchBook(marketId) {
+  const data = await gql(
+    `query Book($id: String!) {
+       Order(
+         limit: 200
+         where: { market_id: { _eq: $id }, status: { _eq: "Open" }, side: { _is_null: false } }
+       ) { side price quantityRemaining }
+     }`,
+    { id: marketId },
+  );
+  const rows = data.Order || [];
+  let bestBidYes = null;   // highest price someone will pay for YES
+  let bestAskYes = null;   // lowest price someone will sell YES at
+  for (const r of rows) {
+    const price = BigInt(r.price);
+    if (r.side === "BUY_YES") { if (bestBidYes === null || price > bestBidYes) bestBidYes = price; }
+    else if (r.side === "SELL_YES") { if (bestAskYes === null || price < bestAskYes) bestAskYes = price; }
+  }
+  const ONE = 1000000n; // a binary contract settles at 1.00 collateral
+  return {
+    bestBidYes,
+    bestAskYes,
+    bestAskNo: bestBidYes === null ? null : ONE - bestBidYes,
+    bestBidNo: bestAskYes === null ? null : ONE - bestAskYes,
+    depth: rows.length,
+  };
+}
+
+// What to pay to actually cross the book for a given side, with headroom for the
+// market moving between now and settlement. Returns null when there is nothing
+// resting to cross, because inventing a price there would be a guess.
+export function crossingPrice(book, buyNo, bufferBps = 1500n) {
+  const ask = buyNo ? book.bestAskNo : book.bestAskYes;
+  if (ask === null || ask <= 0n) return null;
+  const ONE = 1000000n;
+  const withBuffer = ask + (ask * bufferBps) / 10000n;
+  // A binary contract can never be worth more than 1.00, and a price of 0 is
+  // not an order.
+  if (withBuffer >= ONE) return ONE - 1000n;
+  return withBuffer < 1000n ? 1000n : withBuffer;
+}

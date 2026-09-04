@@ -47,7 +47,7 @@ export default function GoLive({ vault, wallet }) {
         : `Your account puts up a ${fmtSom(SUBSCRIPTION_STAKE)} stake so the network will push market results straight to it. It holds ${fmtSom(state.native)}, so it needs ${fmtSom(shortfall)} more.`,
       complete: funded,
       action: `Add ${fmtSom(shortfall)}`,
-      run: () => fundVault({ provider: wallet.provider, account: wallet.account, value: shortfall }),
+      run: () => fundVault({ provider: wallet.provider, account: wallet.account, vault: vault.address, value: shortfall }),
     },
     {
       key: "subscribe",
@@ -58,7 +58,7 @@ export default function GoLive({ vault, wallet }) {
       complete: state.subscribed,
       blocked: !funded && "Put up the stake first.",
       action: "Start listening",
-      run: () => subscribeAllMarkets({ provider: wallet.provider, account: wallet.account }),
+      run: () => subscribeAllMarkets({ provider: wallet.provider, account: wallet.account, vault: vault.address }),
     },
     {
       key: "approve",
@@ -69,7 +69,7 @@ export default function GoLive({ vault, wallet }) {
       complete: false,
       blocked: (!collateralised && "Add funds to your account first.") || (pools.length === 0 && "Put a sequence live first, so there is a market to approve."),
       action: "Give permission",
-      run: () => approvePool({ provider: wallet.provider, account: wallet.account, pool: pools[0], amount: state.maxOutstanding }),
+      run: () => approvePool({ provider: wallet.provider, account: wallet.account, vault: vault.address, pool: pools[0], amount: state.maxOutstanding }),
     },
   ];
 

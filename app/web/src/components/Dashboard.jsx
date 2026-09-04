@@ -18,7 +18,7 @@ const TABS = [
 // sequences; that is Build's job, and this screen only points at it.
 export default function Dashboard({ markets, vault, wallet, onNewSequence, onEditDraft, onOpenDetails }) {
   const [tab, setTab] = useState("active");
-  const [drafts, setDrafts] = useState(() => loadDrafts());
+  const [drafts, setDrafts] = useState(() => loadDrafts(wallet.account));
   const [limitOpen, setLimitOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const [, tick] = useState(0);
@@ -27,6 +27,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
     const timer = window.setInterval(() => tick((n) => n + 1), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => { setDrafts(loadDrafts(wallet.account)); }, [wallet.account]);
 
   const state = vault.state;
   const onchain = vault.steps.filter((s) => s.exists);
@@ -54,7 +55,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
   const stopSequence = async (step) => {
     setBusy(step.stepId);
     try {
-      await cancelStep({ provider: wallet.provider, account: wallet.account, stepId: step.stepId });
+      await cancelStep({ provider: wallet.provider, account: wallet.account, vault: vault.address, stepId: step.stepId });
       await vault.refresh();
     } catch { /* surfaced by the next read */ } finally { setBusy(null); }
   };
@@ -182,7 +183,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
                         </div>
                         <div className="flex items-center gap-3">
                           <button onClick={() => onEditDraft(d)} className="soft-button bg-[#111014] text-white">Open</button>
-                          <button onClick={() => setDrafts(removeDraft(d.id))} className="text-[10px] font-semibold text-[#aaa4ae] hover:text-[#dc6e58]">Delete</button>
+                          <button onClick={() => setDrafts(removeDraft(wallet.account, d.id))} className="text-[10px] font-semibold text-[#aaa4ae] hover:text-[#dc6e58]">Delete</button>
                         </div>
                       </div>
                     ))}

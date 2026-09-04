@@ -89,10 +89,10 @@ const goHome = async (page) => {
   await page.waitForSelector("#dashboard", { timeout: 30000 });
 };
 
-const connectViaBuild = async (page) => {
+const connectViaBuild = async (page, { expect = "#build" } = {}) => {
   await page.getByRole("button", { name: "Build your sequence" }).first().click();
   await page.getByRole("button", { name: /Test harness wallet/ }).click();
-  await page.waitForSelector("#build", { timeout: 30000 });
+  await page.waitForSelector(expect, { timeout: 45000 });
 };
 
 // ---------------------------------------------------------------- metadata
@@ -157,6 +157,28 @@ const connectViaBuild = async (page) => {
     (await page.getByRole("button", { name: "Your sequences", exact: true }).count()) === 1);
 
   await page.screenshot({ path: join(shots, "e2e-landing.png"), fullPage: true });
+  await context.close();
+}
+
+// ------------------------------------------------------- a brand new wallet
+// The suite used to inject the vault owner's address everywhere, which proved
+// only that the author's own account worked. A fresh wallet must get its own
+// account offered, not somebody else's balances.
+{
+  const FRESH = "0x1111111111111111111111111111111111111111";
+  const { context, page } = await newPage({ width: 1440, height: 1000 }, { owner: FRESH });
+  await page.goto(base, { waitUntil: "domcontentloaded" });
+  await connectViaBuild(page, { expect: "#provision" });
+
+  const provision = await page.locator("#provision").innerText();
+  check("a wallet with no account is offered one", /Create your trading account/i.test(provision));
+  check("provisioning explains ownership in plain words", /only you control|belongs to your wallet/i.test(provision));
+  check("provisioning offers a create action", (await page.getByRole("button", { name: "Create my account" }).count()) > 0);
+  check("a fresh wallet is never shown another account's balances",
+    !/At risk now|Still free/.test(provision));
+  check("the builder is not reachable without an account", (await page.locator("#build").count()) === 0);
+
+  await page.screenshot({ path: join(shots, "e2e-provision.png"), fullPage: true });
   await context.close();
 }
 

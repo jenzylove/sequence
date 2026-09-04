@@ -44,9 +44,13 @@ if (!state) {
     state.subscribed ? `subscription ${state.subscriptionId} is live` : "no subscription: settlements will never reach the vault",
     state.subscribed ? null : "Onchain details -> One-time setup -> Start listening");
 
-  const staked = state.native >= 32n * 10n ** 18n;
+  // Once a subscription is open the stake has already been accepted; the
+  // balance drifts slightly below 32 as the vault pays its own costs.
+  const staked = state.subscribed || state.native >= 32n * 10n ** 18n;
   add("11c", "reactivity", staked ? "OK" : "BLOCKED",
-    `vault holds ${SOM(state.native)} of the 32 SOM stake the subscription requires`,
+    state.subscribed
+      ? `stake accepted; vault holds ${SOM(state.native)}`
+      : `vault holds ${SOM(state.native)} of the 32 SOM stake the subscription requires`,
     staked ? null : "Onchain details -> One-time setup -> Add the shortfall");
 
   add("11d", "funding", state.bankroll > 0n ? "OK" : "BLOCKED",
@@ -84,9 +88,12 @@ add("1", "multi-user", hasFactory ? "OK" : "BLOCKED",
   hasFactory ? "a factory/registry exists" : "single shared vault: another wallet sees this vault and cannot arm",
   hasFactory ? null : "add a per-wallet vault factory and resolve the vault from the connected account");
 
-add("10", "multi-user", /account|owner|wallet/i.test(useVault.split("WATCH_KEY")[0]) && /\$\{/.test(useVault) ? "CHECK" : "PARTIAL",
-  "watched sequences are stored under a global browser key, not scoped per wallet",
-  "scope local state by connected account");
+const scoped = /watchKey = \(account\)/.test(useVault) && /keyFor = \(account\)/.test(src("app/web/src/lib/store.js"));
+add("10", "multi-user", scoped ? "OK" : "PARTIAL",
+  scoped
+    ? "sequences and drafts are stored per wallet, so switching accounts does not blend them"
+    : "watched sequences are stored under a global browser key, not scoped per wallet",
+  scoped ? null : "scope local state by connected account");
 
 const armsAllSteps = /for \(const s of strategy\.steps\)[\s\S]{0,400}armStep\(/.test(builder);
 add("2", "chaining", armsAllSteps ? "BLOCKED" : "OK",
@@ -112,16 +119,19 @@ add("5", "capital", redeems ? "OK" : "OPEN",
   redeems ? "redemption exists" : "no redemption path, so won collateral is never recycled",
   redeems ? null : "add redemption once the rolling loop is proven");
 
-const fixedPrice = /price: 600000n/.test(strategy);
+const fixedPrice = !/crossingPrice/.test(builder);
 add("7", "execution", fixedPrice ? "BLOCKED" : "OK",
   fixedPrice
-    ? "successor orders use a fixed $0.60 limit and never read the book, so an IOC can fill nothing"
-    : "orders are priced from live liquidity",
-  fixedPrice ? "read the best ask at execution time and cross it" : null);
+    ? "successor orders use a fixed limit and never read the book, so an order can fill nothing"
+    : "orders are priced to cross the live book, with NO derived from the YES side",
+  fixedPrice ? "read the best ask and cross it" : null);
 
-add("8", "execution", /clobStatus/.test(src("app/web/src/chain/markets.js")) ? "PARTIAL" : "OPEN",
-  "market tradability comes from the indexer, which can lag, and is not rechecked onchain at execution",
-  "verify the successor is still tradable when reactivity fires");
+const rechecks = /checkTradable/.test(builder);
+add("8", "execution", rechecks ? "OK" : "PARTIAL",
+  rechecks
+    ? "the successor market is confirmed against the module, including a recycled pool, before anything is signed"
+    : "market tradability comes from the indexer, which can lag, and is not rechecked onchain",
+  rechecks ? null : "verify the successor is still tradable before arming");
 
 const topUp = /shortfall/.test(goLive);
 add("12", "setup", topUp ? "OK" : "BLOCKED",
@@ -136,11 +146,12 @@ add("13", "integration", existsSync(join(web, "node_modules/@somnia-chain/market
   "the frontend talks to the indexer directly rather than through the markets SDK");
 
 const e2e = src("app/web/scripts/e2e.mjs");
-add("15", "proof", /0x8827d3AF20eFe02582aEA67a5E704C04BAd52324/.test(e2e) ? "BLOCKED" : "OK",
-  /0x8827/.test(e2e)
-    ? "the browser suite injects the owner address and never signs, so it cannot show a fresh user succeeding"
-    : "the suite exercises a non-owner user",
-  "test with a wallet that does not own the vault");
+const freshWallet = /a wallet with no account is offered one/.test(e2e);
+add("15", "proof", freshWallet ? "PARTIAL" : "BLOCKED",
+  freshWallet
+    ? "a wallet owning no vault is exercised end to end up to the signature, but the suite still cannot sign"
+    : "the suite only exercises the vault owner and never signs",
+  freshWallet ? "sign the provisioning and activation once with a real second wallet" : "test with a wallet that does not own the vault");
 
 add("14", "proof", "BLOCKED",
   "no captured run of armed -> settled -> reactive execution or truthful skip",
