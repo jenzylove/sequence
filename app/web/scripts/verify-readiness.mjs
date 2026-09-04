@@ -67,9 +67,13 @@ if (!state) {
       args: [SHANNON.vault, SHANNON.binaryModule],
     });
   } catch { /* allowance is per-pool; module is only a smoke check */ }
-  add("9", "permissions", "PARTIAL",
-    `setup approves only the first pool of an armed step (module allowance reads ${USD(allowed)})`,
-    "approve the pool that will actually execute, per successor market");
+  const allPools = /ensurePoolAllowances/.test(src("app/web/src/components/Builder.jsx"))
+    && /ensurePoolAllowances/.test(src("app/web/src/components/GoLive.jsx"));
+  add("9", "permissions", allPools ? "OK" : "PARTIAL",
+    allPools
+      ? "every pool a sequence could execute against is approved before arming, not just the first"
+      : `setup approves only the first pool of an armed step (module allowance reads ${USD(allowed)})`,
+    allPools ? null : "approve the pool that will actually execute, per successor market");
 
   add("4b", "risk", state.outstanding === 0n ? "OK" : "CHECK",
     `${USD(state.outstanding)} committed against a ${USD(state.maxOutstanding)} limit`);

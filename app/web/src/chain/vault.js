@@ -211,3 +211,29 @@ export async function createVault({ provider, account, maxOutstanding, factory =
   const vault = await vaultForAccount(account, factory);
   return { hash, receipt, vault, status: receipt.status };
 }
+
+// How much of the vault's collateral a given pool may currently draw.
+export async function readAllowance(vault, collateral, pool) {
+  return publicClient().readContract({
+    address: collateral,
+    abi: [{ type: "function", stateMutability: "view", name: "allowance",
+            inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] }],
+    functionName: "allowance", args: [vault, pool],
+  });
+}
+
+// Make sure every pool a sequence might execute against can actually draw the
+// collateral. Approving only the first pool left later steps unable to trade,
+// and pools are recycled between windows so the set is not fixed.
+export async function ensurePoolAllowances({ provider, account, vault, collateral, pools, amount }) {
+  const approved = [];
+  for (const pool of [...new Set(pools.filter(Boolean).map((p) => p.toLowerCase()))]) {
+    const current = await readAllowance(vault, collateral, pool);
+    if (current >= amount) continue;
+    const result = await sendVaultTx({
+      provider, account, vault, functionName: "approvePool", args: [pool, amount],
+    });
+    approved.push({ pool, hash: result.hash });
+  }
+  return approved;
+}

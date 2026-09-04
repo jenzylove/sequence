@@ -1,0 +1,44 @@
+{
+  "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
+  "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+  "vault": "0xf908D5e59d38dF8Fb0739dbE759B373D83aF20Ed",
+  "factory": "0x5d2d9862E1B442b303b64fDB677f6e041425dB3c",
+  "subscriptionId": "15952225",
+  "stepId": "0x87070d6b77706565c30a68719788980513428de1e4f2a92e4fd7f1229e2ca6c5",
+  "trigger": {
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000013524",
+    "name": "BTC 15m",
+    "expiry": 1788529500,
+    "question": "BTC closes at or above its opening price"
+  },
+  "successor": {
+    "marketId": "0x00000000000000000000000000000000000000000000000000000000000134ca",
+    "name": "BTC 1h",
+    "pool": "0x26f7accb62f26d8e183b6f7eb7701e7254564b13",
+    "expiry": 1788530400
+  },
+  "order": {
+    "price": "535900",
+    "quantity": "3",
+    "notional": "1607700",
+    "cap": "2000000"
+  },
+  "armedAt": "2026-09-04T13:35:58.279Z",
+  "armedTx": "0x600dc906fee0c2a21ece2097d07e0af08cb729eb342f549b38b31da8c8b93193",
+  "armedBlock": "479558446",
+  "timeline": [
+    {
+      "event": "StepArmed",
+      "args": {
+        "stepId": "0x87070d6b77706565c30a68719788980513428de1e4f2a92e4fd7f1229e2ca6c5",
+        "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013524",
+        "pool": "0x26F7acCB62F26d8E183B6F7Eb7701e7254564B13"
+      },
+      "blockNumber": "479558446",
+      "txHash": "0x600dc906fee0c2a21ece2097d07e0af08cb729eb342f549b38b31da8c8b93193",
+      "logIndex": 0,
+      "at": "2026-09-04T13:35:58.494Z"
+    }
+  ],
+  "outcome": "waiting"
+}
