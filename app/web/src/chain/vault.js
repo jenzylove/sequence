@@ -181,6 +181,11 @@ export async function readNativeBalance(address) {
 export const subscribeAllMarkets = (opts) => sendVaultTx({ ...opts, functionName: "subscribeAllMarkets", args: [] });
 export const approvePool = (opts) => sendVaultTx({ ...opts, functionName: "approvePool", args: [opts.pool, opts.amount] });
 export const queueStep = (opts) => sendVaultTx({ ...opts, functionName: "queueStep", args: [opts.stepId, opts.step] });
+// Nudge a step whose market has resolved but whose event never arrived.
+// Permissionless: the caller supplies only a market id and the vault reads the
+// outcome from the market contract itself.
+export const syncResolution = (opts) => sendVaultTx({ ...opts, functionName: "syncResolution", args: [opts.marketId] });
+
 export const cancelStep = (opts) => sendVaultTx({ ...opts, functionName: "cancelStep", args: [opts.stepId] });
 export const setPaused = (opts) => sendVaultTx({ ...opts, functionName: "setPaused", args: [opts.paused] });
 

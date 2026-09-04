@@ -26,6 +26,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const [armResult, setArmResult] = useState(null);
   const [book, setBook] = useState(null);
   const [tradable, setTradable] = useState(null);
+  const [sizeProblem, setSizeProblem] = useState(null);
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -75,18 +76,18 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         if (!live) return;
         setBook(next);
         const cross = crossingPrice(next, buyingNo);
-        if (cross) {
-          setStrategy((cur) => ({
-            ...cur,
-            steps: cur.steps.map((s) => {
-              if (s.key !== step.key) return s;
-              // Keep the stake the trader chose; the size follows the price.
-              let quantity = s.notionalCap / cross;
-              if (quantity < 1n) quantity = 1n;
-              return { ...s, price: cross, quantity };
-            }),
-          }));
-        }
+        if (!cross || !step.pool) return;
+        // The pool has a tick, a minimum and a lot size, and it reverts rather
+        // than returning false when an order misses them.
+        const params = await fetchPoolParams(step.pool, publicClient());
+        if (!live) return;
+        const sized = sizeOrder({ price: cross, budget: step.notionalCap, ...params });
+        if (!sized) { setSizeProblem(`One lot of the smallest tradable order costs more than this amount.`); return; }
+        setSizeProblem(null);
+        setStrategy((cur) => ({
+          ...cur,
+          steps: cur.steps.map((s) => (s.key === step.key ? { ...s, price: sized.price, quantity: sized.quantity } : s)),
+        }));
       } catch { if (live) setBook(null); }
     })();
     return () => { live = false; };
@@ -361,7 +362,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
                         aria-label="Amount per trade"
                         // Shown to the cent, so the amount here reads exactly
                         // as it does on the branches and in the summary.
-                        value={(Number(notionalOf(step)) / 1e6).toFixed(2)}
+                        value={(Number(orderCost(step.price, step.quantity)) / 1e6).toFixed(2)}
                         onChange={(e) => setStake(step.key, e.target.value)}
                       />
                     </div>
@@ -394,6 +395,9 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
                       </div>
                     )}
                   </div>
+                )}
+                {sizeProblem && (
+                  <p className="mt-3 text-[10px] font-semibold text-[#a8834f]">{sizeProblem}</p>
                 )}
                 {tradable && !tradable.ok && (
                   <p className="mt-3 text-[10px] font-semibold text-[#dc6e58]" role="alert">{tradable.problems[0]}</p>

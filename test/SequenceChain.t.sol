@@ -16,11 +16,16 @@ contract ChainModule {
 
 /// A pool that can refuse, so "the order was rejected" is actually testable.
 contract ChainPool {
-    uint256 public calls; uint8 public lastKind; bool public refuse;
+    uint256 public calls; uint8 public lastKind; bool public refuse; bool public reverts;
+    error QuantityBelowMinimum(uint256 given, uint256 minimum);
     function setRefuse(bool r) external { refuse = r; }
-    function placeBinaryOrder(uint8 k,uint256,uint256,uint64,uint8,uint8,address,uint96,uint64)
+    /// A real pool reverts for an order below its minimum quantity rather than
+    /// returning false, so that path has to be exercised too.
+    function setRevert(bool r) external { reverts = r; }
+    function placeBinaryOrder(uint8 k,uint256,uint256 q,uint64,uint8,uint8,address,uint96,uint64)
         external payable returns (bool,uint128)
     {
+        if (reverts) revert QuantityBelowMinimum(q, 1000);
         calls++; lastKind = k;
         if (refuse) return (false, 0);
         return (true, uint128(calls));
@@ -59,7 +64,7 @@ contract SequenceChainTest is Test {
     function _mk(bytes32 market, uint8 on0, uint8 on1) internal view returns (SequenceVault.Step memory s) {
         s.triggerMarketId = market;
         s.pool = address(pool);
-        s.price = 100; s.quantity = 5; s.notionalCap = 1000;
+        s.price = 100000; s.quantity = 5_000000; s.notionalCap = 1_000000;
         s.expireNs = uint64(block.timestamp + 3600) * 1e9;
         s.orderType = 2;
         s.actionOnWin0 = on0; s.actionOnWin1 = on1;
@@ -94,7 +99,7 @@ contract SequenceChainTest is Test {
         _arm(sid, m, BUY_YES, BUY_NO);
         _fire(22, m, _up());
         assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.PLACED));
-        assertEq(vault.outstandingNotional(), 500);
+        assertEq(vault.outstandingNotional(), 500000);
     }
 
     // ---- exposure release ---------------------------------------------------
@@ -103,8 +108,8 @@ contract SequenceChainTest is Test {
         bytes32 sid = keccak256("e1"); bytes32 m = keccak256("mE1"); module.setQid(m, 31);
         _arm(sid, m, BUY_YES, BUY_NO);
         _fire(31, m, _up());
-        assertEq(vault.outstandingNotional(), 500);
-        assertEq(vault.outstandingByMarket(_succ(m)), 500);
+        assertEq(vault.outstandingNotional(), 500000);
+        assertEq(vault.outstandingByMarket(_succ(m)), 500000);
 
         module.setQid(_succ(m), 32);
         _fire(32, _succ(m), _up());
@@ -113,12 +118,12 @@ contract SequenceChainTest is Test {
     }
 
     function test_rolling_is_not_blocked_by_stale_exposure() public {
-        vault.setMaxOutstanding(600); // room for one trade at a time
+        vault.setMaxOutstanding(600000); // room for one trade at a time
 
         bytes32 s1 = keccak256("e2a"); bytes32 m1 = keccak256("mE2a"); module.setQid(m1, 41);
         _arm(s1, m1, BUY_YES, BUY_NO);
         _fire(41, m1, _up());
-        assertEq(vault.outstandingNotional(), 500);
+        assertEq(vault.outstandingNotional(), 500000);
 
         module.setQid(_succ(m1), 42);
         _fire(42, _succ(m1), _up()); // that position settles
@@ -141,6 +146,43 @@ contract SequenceChainTest is Test {
     function test_release_requires_actual_exposure() public {
         vm.expectRevert(abi.encodeWithSelector(SequenceVault.NoExposure.selector, keccak256("nope")));
         vault.releaseExposure(keccak256("nope"));
+    }
+
+    // ---- what an order actually costs ---------------------------------------
+
+    function test_cost_is_price_times_quantity_over_one_unit() public {
+        // 2.0 contracts at $0.80 costs $1.60, not $1,600,000. Multiplying the
+        // raw values overstates the commitment by a million and would make every
+        // cap unreachable.
+        bytes32 sid = keccak256("u1"); bytes32 m = keccak256("mU1"); module.setQid(m, 81);
+        SequenceVault.Step memory s = _mk(m, BUY_YES, BUY_NO);
+        s.price = 800000;        // $0.80
+        s.quantity = 2_000000;   // 2.0 in 6dp base units
+        s.notionalCap = 1_600000;
+        vault.armStep(sid, s);   // exactly at the cap, so it must be accepted
+
+        _fire(81, m, _up());
+        assertEq(vault.outstandingNotional(), 1_600000);
+    }
+
+    function test_arm_rejects_a_cost_over_the_step_cap_in_real_units() public {
+        SequenceVault.Step memory s = _mk(keccak256("mU2"), BUY_YES, BUY_NO);
+        s.price = 800000; s.quantity = 3_000000; s.notionalCap = 1_600000; // $2.40 > $1.60
+        vm.expectRevert(abi.encodeWithSelector(SequenceVault.CapExceeded.selector, 2_400000, 1_600000));
+        vault.armStep(keccak256("u2"), s);
+    }
+
+    // ---- a reverting pool must not brick the step ---------------------------
+
+    function test_a_pool_that_reverts_is_recorded_not_propagated() public {
+        bytes32 sid = keccak256("u3"); bytes32 m = keccak256("mU3"); module.setQid(m, 82);
+        _arm(sid, m, BUY_YES, BUY_NO);
+        pool.setRevert(true);
+
+        _fire(82, m, _up());     // must not revert the whole callback
+
+        assertEq(uint256(vault.stepStatus(sid)), uint256(SequenceVault.Status.SKIPPED));
+        assertEq(vault.outstandingNotional(), 0);
     }
 
     // ---- conditional chaining ----------------------------------------------

@@ -192,3 +192,52 @@ export function crossingPrice(book, buyNo, bufferBps = 1500n) {
   if (withBuffer >= ONE) return ONE - 1000n;
   return withBuffer < 1000n ? 1000n : withBuffer;
 }
+
+// The pool's own trading rules. A price must sit on a tick, a quantity must be
+// at least the minimum and aligned to a lot, and a pool REVERTS rather than
+// returning false when they are not: an order of 2 against a minimum of 1000
+// reverts QuantityBelowMinimum. Sizing has to respect these or nothing trades.
+export const poolParamsAbi = [{
+  type: "function", stateMutability: "view", name: "getOrderBookParameters",
+  inputs: [],
+  outputs: [{ type: "tuple", components: [
+    { type: "uint256", name: "tickSize" },
+    { type: "uint256", name: "minQuantity" },
+    { type: "uint256", name: "lotSize" },
+  ] }],
+}];
+
+// Prices are a fraction of one collateral unit in 6dp and quantities are base
+// units in 6dp, so an order costs price*quantity/1e6.
+export const PRICE_SCALE = 1000000n;
+export const orderCost = (price, quantity) => (price * quantity) / PRICE_SCALE;
+
+// Largest order that respects the pool's rules and still costs no more than the
+// budget. Returns null when even one lot is too expensive, because sizing down
+// past the minimum is not an order the pool will take.
+export function sizeOrder({ price, budget, tickSize, minQuantity, lotSize }) {
+  const tick = tickSize > 0n ? tickSize : 1n;
+  const lot = lotSize > 0n ? lotSize : 1n;
+  const min = minQuantity > 0n ? minQuantity : lot;
+
+  // Round the price UP to a tick: for a buy that keeps it crossing.
+  const onTick = ((price + tick - 1n) / tick) * tick;
+  if (onTick <= 0n) return null;
+
+  const affordable = (budget * PRICE_SCALE) / onTick;
+  let quantity = (affordable / lot) * lot;
+  if (quantity < min) {
+    // One minimum-sized order is the smallest thing that can trade at all.
+    const smallest = ((min + lot - 1n) / lot) * lot;
+    if (orderCost(onTick, smallest) > budget) return null;
+    quantity = smallest;
+  }
+  return { price: onTick, quantity, cost: orderCost(onTick, quantity) };
+}
+
+export async function fetchPoolParams(pool, client) {
+  const [params] = await Promise.all([
+    client.readContract({ address: pool, abi: poolParamsAbi, functionName: "getOrderBookParameters" }),
+  ]);
+  return { tickSize: params.tickSize, minQuantity: params.minQuantity, lotSize: params.lotSize };
+}

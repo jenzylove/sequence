@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {SomniaEventHandler} from "@somnia-chain/reactivity-contracts/contracts/SomniaEventHandler.sol";
 import {SomniaExtensions} from "@somnia-chain/reactivity-contracts/contracts/interfaces/SomniaExtensions.sol";
 import {Verified} from "./Verified.sol";
-import {IBinaryMarketsModule, IBinaryPool, IERC20} from "./IDreamDEX.sol";
+import {IBinaryMarketsModule, IBinaryPool, IBinaryMarket, IERC20} from "./IDreamDEX.sol";
 
 // SequenceVault
 // A capped strategy vault. Off-chain planner arms ONE step at a time; the vault
@@ -34,6 +34,8 @@ contract SequenceVault is SomniaEventHandler {
     error BadAction(uint8 action);
     error NotQueued(bytes32 stepId);
     error NoExposure(bytes32 marketId);
+    error NotResolvedYet(bytes32 marketId);
+    error UnknownMarket(bytes32 marketId);
 
     // ---- per-outcome actions ----
     // What the vault does when an outcome wins. The two buy values are the
@@ -44,6 +46,16 @@ contract SequenceVault is SomniaEventHandler {
     uint8 internal constant ACT_BUY_YES = 0;
     uint8 internal constant ACT_BUY_NO = 2;
     uint8 internal constant ACT_STOP = 255;
+
+    // Prices are a fraction of one collateral unit in 6dp, and quantities are
+    // base units in 6dp, so what an order actually costs is price*quantity/1e6.
+    // Multiplying them raw overstates the commitment by a million and makes
+    // every cap meaningless.
+    uint256 internal constant PRICE_SCALE = 1e6;
+
+    function _cost(uint256 price, uint256 quantity) internal pure returns (uint256) {
+        return (price * quantity) / PRICE_SCALE;
+    }
 
     function _validAction(uint8 a) internal pure returns (bool) {
         return a == ACT_BUY_YES || a == ACT_BUY_NO || a == ACT_STOP;
@@ -105,6 +117,7 @@ contract SequenceVault is SomniaEventHandler {
     event StepQueued(bytes32 indexed stepId, bytes32 indexed triggerMarketId);
     event ChainAdvanced(bytes32 indexed fromStepId, bytes32 indexed toStepId);
     event ExposureReleased(bytes32 indexed marketId, uint256 amount);
+    event ResolutionSynced(bytes32 indexed marketId, uint256 questionId, address indexed by);
     event Skipped(bytes32 indexed stepId, bytes32 indexed marketId, string reason);
     event StepCancelled(bytes32 indexed stepId);
     event PausedSet(bool paused);
@@ -147,7 +160,7 @@ contract SequenceVault is SomniaEventHandler {
         if (!_validAction(s.actionOnWin1)) revert BadAction(s.actionOnWin1);
 
         // enforce per-step notional cap at arm time
-        uint256 notional = s.price * s.quantity;
+        uint256 notional = _cost(s.price, s.quantity);
         if (notional > s.notionalCap) revert CapExceeded(notional, s.notionalCap);
 
         Step memory x = s;
@@ -166,7 +179,7 @@ contract SequenceVault is SomniaEventHandler {
     function queueStep(bytes32 stepId, Step calldata s) external onlyOwner {
         if (!_validAction(s.actionOnWin0)) revert BadAction(s.actionOnWin0);
         if (!_validAction(s.actionOnWin1)) revert BadAction(s.actionOnWin1);
-        uint256 notional = s.price * s.quantity;
+        uint256 notional = _cost(s.price, s.quantity);
         if (notional > s.notionalCap) revert CapExceeded(notional, s.notionalCap);
 
         Step memory x = s;
@@ -222,9 +235,39 @@ contract SequenceVault is SomniaEventHandler {
         if (topics.length < 3) revert BadTopics();
         if (topics[0] != Verified.ANSWER_DELIVERED_TOPIC0) revert WrongTopic0();
 
-        uint256 questionId = uint256(topics[1]);
-        bytes32 marketId = topics[2];
+        ( , uint256[] memory nums, bool voided) = abi.decode(data, (uint32, uint256[], bool));
+        _applyResolution(uint256(topics[1]), topics[2], nums, voided);
+    }
 
+    /// Drive a step from the market's own on-chain resolution, without waiting
+    /// for a delivered event.
+    ///
+    /// Reactivity is the primary path and stays that way. This exists because a
+    /// delivery can be missed: we observed OracleHub emit AnswerDelivered for a
+    /// market, the market finalize on chain, and the subscription never invoke
+    /// this contract, leaving a step ARMED for ever with the trader's rules
+    /// unrun. A sequence that silently stops is worse than one that trades.
+    ///
+    /// Permissionless on purpose: anyone may nudge a stuck step, because the
+    /// caller supplies nothing but a market id. The outcome is read from the
+    /// market contract itself, so there is nothing to lie about, and the same
+    /// idempotency key means a later delivery cannot double-fire it.
+    function syncResolution(bytes32 marketId) external {
+        if (paused) revert Paused();
+
+        (uint256 questionId,,,,,,,, address market,,,,,) = module.markets(marketId);
+        if (market == address(0)) revert UnknownMarket(marketId);
+
+        IBinaryMarket m = IBinaryMarket(market);
+        bool voided = m.isVoided();
+        if (!voided && !m.isResolved()) revert NotResolvedYet(marketId);
+
+        uint256[] memory nums = voided ? new uint256[](0) : m.payoutNumerators();
+        emit ResolutionSynced(marketId, questionId, msg.sender);
+        _applyResolution(questionId, marketId, nums, voided);
+    }
+
+    function _applyResolution(uint256 questionId, bytes32 marketId, uint256[] memory nums, bool voided) internal {
         // A market this vault holds exposure in has settled: that exposure is no
         // longer outstanding. Done before the idempotency gate because releasing
         // is about the successor market, not about a trigger firing.
@@ -244,7 +287,6 @@ contract SequenceVault is SomniaEventHandler {
         Step storage st = steps[stepId];
         if (st.status != Status.ARMED && st.status != Status.WAITING) return;
 
-        ( , uint256[] memory nums, bool voided) = abi.decode(data, (uint32, uint256[], bool));
         uint8 win = _winner(nums, voided);
         st.winningOutcome = win;
         st.status = Status.TRIGGERED;
@@ -275,19 +317,31 @@ contract SequenceVault is SomniaEventHandler {
         }
 
         // risk caps
-        uint256 notional = st.price * st.quantity;
+        uint256 notional = _cost(st.price, st.quantity);
         if (notional > st.notionalCap) { st.status = Status.SKIPPED; emit Skipped(stepId, marketId, "step-cap"); return; }
         if (outstandingNotional + notional > maxOutstandingNotional) {
             st.status = Status.SKIPPED; emit Skipped(stepId, marketId, "vault-cap"); return;
         }
 
-        (bool ok, uint128 orderId) = IBinaryPool(st.pool).placeBinaryOrder(
+        // The pool can revert outright, not just return false: an order below its
+        // minimum quantity reverts QuantityBelowMinimum. Letting that bubble
+        // would abort the whole callback, leaving the step ARMED for ever with
+        // no record of why, which is the exact failure this vault exists to
+        // avoid. A refusal is caught and recorded instead.
+        bool ok;
+        uint128 orderId;
+        try IBinaryPool(st.pool).placeBinaryOrder(
             kind, st.price, st.quantity, st.expireNs, st.orderType, 0, address(0), 0, 0
-        );
+        ) returns (bool placed, uint128 id) {
+            ok = placed;
+            orderId = id;
+        } catch {
+            ok = false;
+        }
 
         // The pool refused the order. Nothing was placed, so nothing is
-        // committed and the chain does not advance. Saying EXECUTED here would
-        // be a lie the interface would then repeat.
+        // committed and the chain does not advance. Saying it executed here
+        // would be a lie the interface would then repeat.
         if (!ok) {
             st.status = Status.SKIPPED;
             emit PlacementRejected(stepId, st.pool, kind);
