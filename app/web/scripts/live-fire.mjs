@@ -47,7 +47,12 @@ const send = async (label, params) => {
   return { hash, receipt };
 };
 
-const load = () => (existsSync(evidencePath) ? JSON.parse(readFileSync(evidencePath, "utf8")) : null);
+const load = () => {
+  if (!existsSync(evidencePath)) return { runs: [] };
+  const raw = JSON.parse(readFileSync(evidencePath, "utf8"));
+  // Earlier evidence held a single run at the top level.
+  return raw.runs ? raw : { runs: [raw] };
+};
 const save = (data) => writeFileSync(evidencePath, JSON.stringify(data, null, 2) + "\n");
 
 // ---------------------------------------------------------------- arm
@@ -126,24 +131,31 @@ async function arm() {
     timeline: [],
     outcome: "waiting",
   };
-  save(evidence);
-  say(`\nevidence written to docs/LIVE_FIRE.json`);
-  return evidence;
+  // Append rather than overwrite: a stalled venue must not cost us the record
+  // of what was already attempted.
+  const all = load();
+  all.runs.push(evidence);
+  save(all);
+  say(`\nevidence written to docs/LIVE_FIRE.json (run ${all.runs.length})`);
+  return all;
 }
 
 // ---------------------------------------------------------------- watch
-async function watch(evidence) {
-  const vault = evidence.vault;
-  const settleAt = evidence.trigger.expiry * 1000;
-  say(`\nwatching for settlement of ${evidence.trigger.name} at ${new Date(settleAt).toISOString()}`);
+async function watch(all) {
+  const runs = all.runs.filter((r) => !["PLACED", "SKIPPED", "EXPIRED", "CANCELLED"].includes(r.finalStatus));
+  if (runs.length === 0) { say("every recorded run has already reached a final state"); return all; }
+  const vault = runs[0].vault;
+  const STATUS = ["NONE", "ARMED", "WAITING", "TRIGGERED", "PLACED", "SKIPPED", "EXPIRED", "CANCELLED", "PENDING"];
 
-  let from = BigInt(evidence.armedBlock);
-  const deadline = Date.now() + 60 * 60 * 1000;
-  const seen = new Set(evidence.timeline.map((t) => `${t.txHash}:${t.logIndex}`));
+  say(`\nwatching ${runs.length} armed run(s) on ${vault}`);
+  for (const r of runs) say(`   ${r.trigger.name} expired/expires ${new Date(r.trigger.expiry * 1000).toISOString()}`);
+
+  let from = runs.map((r) => BigInt(r.armedBlock)).reduce((a, b) => (a < b ? a : b));
+  const deadline = Date.now() + 90 * 60 * 1000;
+  const seen = new Set(all.runs.flatMap((r) => (r.timeline || []).map((t) => `${t.txHash}:${t.logIndex}`)));
 
   while (Date.now() < deadline) {
     const latest = await pub.getBlockNumber();
-    // Shannon caps eth_getLogs at 1000 blocks, so the window is walked.
     for (let start = from; start <= latest; start += 1000n) {
       const to = start + 999n > latest ? latest : start + 999n;
       let logs = [];
@@ -152,45 +164,45 @@ async function watch(evidence) {
         const key = `${log.transactionHash}:${log.logIndex}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const entry = {
-          event: log.eventName,
-          args: Object.fromEntries(Object.entries(log.args || {}).map(([k, v]) => [k, typeof v === "bigint" ? v.toString() : v])),
-          blockNumber: log.blockNumber.toString(),
-          txHash: log.transactionHash,
-          logIndex: log.logIndex,
-          at: new Date().toISOString(),
-        };
-        evidence.timeline.push(entry);
-        say(`   ${entry.event}  ${JSON.stringify(entry.args)}  ${txUrl(entry.txHash)}`);
-        if (entry.event === "Placed") evidence.outcome = "placed";
-        if (entry.event === "Skipped") evidence.outcome = `skipped: ${entry.args.reason}`;
-        if (entry.event === "PlacementRejected") evidence.outcome = "order rejected by the pool";
-        save(evidence);
+        const args = Object.fromEntries(Object.entries(log.args || {}).map(([k, v]) => [k, typeof v === "bigint" ? v.toString() : v]));
+        const entry = { event: log.eventName, args, blockNumber: log.blockNumber.toString(), txHash: log.transactionHash, logIndex: log.logIndex, at: new Date().toISOString() };
+        const run = all.runs.find((r) => r.stepId === args.stepId) || runs[0];
+        (run.timeline ||= []).push(entry);
+        say(`   ${entry.event}  ${JSON.stringify(args).slice(0, 140)}  ${txUrl(entry.txHash)}`);
+        if (entry.event === "Placed") run.outcome = "placed";
+        if (entry.event === "Skipped") run.outcome = `skipped: ${args.reason}`;
+        if (entry.event === "PlacementRejected") run.outcome = "order rejected by the pool";
+        save(all);
       }
     }
     from = latest + 1n;
 
-    const status = await pub.readContract({ address: vault, abi: vaultAbi, functionName: "stepStatus", args: [evidence.stepId] });
-    const STATUS = ["NONE", "ARMED", "WAITING", "TRIGGERED", "PLACED", "SKIPPED", "EXPIRED", "CANCELLED", "PENDING"];
-    evidence.finalStatus = STATUS[Number(status)];
-    if (["PLACED", "SKIPPED", "EXPIRED", "CANCELLED"].includes(evidence.finalStatus)) {
-      evidence.settledAt = new Date().toISOString();
-      save(evidence);
-      say(`\nfinal status: ${evidence.finalStatus}  (${evidence.outcome})`);
-      return evidence;
+    let settled = false;
+    for (const r of runs) {
+      const status = await pub.readContract({ address: vault, abi: vaultAbi, functionName: "stepStatus", args: [r.stepId] });
+      r.finalStatus = STATUS[Number(status)];
+      if (["PLACED", "SKIPPED", "EXPIRED", "CANCELLED"].includes(r.finalStatus)) {
+        r.settledAt = new Date().toISOString();
+        settled = true;
+      }
+    }
+    save(all);
+    if (settled) {
+      say(`
+reached a final state:`);
+      for (const r of runs) say(`   ${r.trigger.name}: ${r.finalStatus} (${r.outcome})`);
+      return all;
     }
 
-    const waitFor = Math.max(15000, Math.min(60000, settleAt - Date.now()));
-    process.stdout.write(`   ${evidence.finalStatus}, settles in ${Math.round((settleAt - Date.now()) / 1000)}s\n`);
-    await new Promise((r) => setTimeout(r, waitFor));
+    say(`   ${runs.map((r) => `${r.trigger.name}:${r.finalStatus}`).join("  ")}`);
+    await new Promise((res) => setTimeout(res, 30000));
   }
-  evidence.outcome = "timed out waiting for settlement";
-  save(evidence);
-  return evidence;
+  for (const r of runs) if (r.outcome === "waiting") r.outcome = "timed out waiting for settlement";
+  save(all);
+  return all;
 }
 
 const watchOnly = process.argv.includes("--watch");
 const evidence = watchOnly ? load() : await arm();
-if (!evidence) throw new Error("no evidence file to watch");
 await watch(evidence);
 process.exit(0);
