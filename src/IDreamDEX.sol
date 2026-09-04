@@ -37,3 +37,16 @@ interface IERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
 }
+
+// BinaryMarket resolution reads (from @somnia-chain/markets-sdk
+// `binaryMarketReadAbi`). This is the authoritative on-chain answer: the market
+// stores a payout VECTOR, and the winner is its argmax. Sequence reads these
+// directly so a stuck step can be resolved from chain state rather than from a
+// caller's word, when a Reactivity delivery is missed.
+interface IBinaryMarket {
+    function isResolved() external view returns (bool);
+    function isVoided() external view returns (bool);
+    function payoutNumerators() external view returns (uint256[] memory);
+    function settlementWindow() external view returns (uint64);
+    function expiry() external view returns (uint64);
+}

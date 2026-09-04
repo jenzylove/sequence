@@ -5,7 +5,8 @@ import LimitDialog from "./LimitDialog.jsx";
 import { statusCopy, bucketFor, money, countdown, marketName } from "../lib/language.js";
 import { explainEvent } from "../lib/command.js";
 import { loadDrafts, removeDraft } from "../lib/store.js";
-import { cancelStep } from "../chain/vault.js";
+import { cancelStep, syncResolution } from "../chain/vault.js";
+import { readMarketOnchain } from "../chain/module.js";
 
 const TABS = [
   { key: "active", label: "Live" },
@@ -51,6 +52,40 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
     () => vault.events.filter((e) => ["Executed", "Skipped", "Triggered"].includes(e.name)).slice(-4).reverse(),
     [vault.events],
   );
+
+  // A market can settle without the event reaching the account. Rather than
+  // leave a sequence waiting for ever, offer to read the result from the market
+  // itself. Anyone may do this; it takes nothing on trust.
+  const [resolvable, setResolvable] = useState({});
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const next = {};
+      for (const s of active) {
+        const market = markets.open.find((m) => m.marketId?.toLowerCase() === s.triggerMarketId?.toLowerCase());
+        const expired = market?.expiry ? market.expiry * 1000 < Date.now() : true;
+        if (!expired) continue;
+        try {
+          const onchain = await readMarketOnchain(s.triggerMarketId);
+          if (onchain.exists) next[s.stepId] = true;
+        } catch { /* leave it out */ }
+      }
+      if (live) setResolvable(next);
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vault.status, active.length]);
+
+  const checkResult = async (step) => {
+    setBusy(step.stepId);
+    try {
+      await syncResolution({
+        provider: wallet.provider, account: wallet.account,
+        vault: vault.address, marketId: step.triggerMarketId,
+      });
+      await vault.refresh();
+    } catch { /* surfaced by the next read */ } finally { setBusy(null); }
+  };
 
   const stopSequence = async (step) => {
     setBusy(step.stepId);

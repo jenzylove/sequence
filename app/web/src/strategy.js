@@ -101,7 +101,10 @@ export function seedFromMarkets(markets) {
   return strat;
 }
 
-export const notionalOf = (step) => step.price * step.quantity;
+// Matches SequenceVault._cost: prices are 6dp fractions and quantities are 6dp
+// base units, so an order costs price*quantity/1e6.
+export const PRICE_SCALE = 1000000n;
+export const notionalOf = (step) => (step.price * step.quantity) / PRICE_SCALE;
 
 // Same checks the vault applies, run before the user is ever asked to sign.
 export function validate(strategy) {

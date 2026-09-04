@@ -157,9 +157,23 @@ add("15", "proof", freshWallet ? "PARTIAL" : "BLOCKED",
     : "the suite only exercises the vault owner and never signs",
   freshWallet ? "sign the provisioning and activation once with a real second wallet" : "test with a wallet that does not own the vault");
 
-add("14", "proof", "BLOCKED",
-  "no captured run of armed -> settled -> reactive execution or truthful skip",
-  "capture the loop once the vault is subscribed and chaining is real");
+// The recorded live-fire run is the durable proof, so it is read rather than
+// asserted.
+let fire = null;
+try { fire = JSON.parse(src("docs/LIVE_FIRE.json")); } catch { /* none yet */ }
+const proven = (fire?.runs || []).find((r) => ["PLACED", "SKIPPED"].includes(r.finalStatus));
+add("14", "proof", proven ? "OK" : "BLOCKED",
+  proven
+    ? `captured on chain: armed -> ${proven.timeline.map((t) => t.event).join(" -> ")} (${proven.outcome})`
+    : "no captured run of armed -> settled -> execution or truthful skip",
+  proven ? null : "capture the loop end to end");
+
+const backstop = /function syncResolution/.test(vaultSol);
+add("16", "robustness", backstop ? "OK" : "BLOCKED",
+  backstop
+    ? "a missed Reactivity delivery can be recovered permissionlessly from onchain market state"
+    : "a missed delivery leaves a sequence armed for ever",
+  backstop ? null : "add an onchain recovery path");
 
 // ---------------------------------------------------------------- report
 const order = { BLOCKED: 0, PARTIAL: 1, CHECK: 2, OPEN: 3, OK: 4 };

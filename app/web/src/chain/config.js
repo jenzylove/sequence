@@ -10,8 +10,8 @@ export const SHANNON = {
   oracleHub: "0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b",
   binaryModule: "0x3ecC694Cef705358864a646142ac17A90E29e388",
   testUsdc: "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
-  vault: "0xf908D5e59d38dF8Fb0739dbE759B373D83aF20Ed",
-  factory: "0x5d2d9862E1B442b303b64fDB677f6e041425dB3c",
+  vault: "0xe0e08329A28347568E56e8184DbC7efDE8c7B2d6",
+  factory: "0x9b71Ad905083b8b35559c45a39Fc12a7C5ADA91f",
   nativeCurrency: { name: "Somnia", symbol: "STT", decimals: 18 },
 };
 

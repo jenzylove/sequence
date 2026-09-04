@@ -55,6 +55,22 @@ else
 fi
 echo "   vault:    $VAULT"
 
+# ---------------------------------------------------------------- 2b. recover
+# The previous vault's stake is locked in its subscription. Releasing it is the
+# only way to fund the new one without fresh SOM, so it happens before staking.
+if [ "$OLD_VAULT" != "$VAULT" ]; then
+  OLD_SUB=$(cast call "$OLD_VAULT" "subscriptionId()(uint256)" --rpc-url "$RPC" 2>/dev/null | awk '{print $1}')
+  if [ -n "$OLD_SUB" ] && [ "$OLD_SUB" != "0" ]; then
+    echo "2b. cancelling the previous subscription ($OLD_SUB) to release its stake"
+    send "$OLD_VAULT" "cancelSubscription()"
+  fi
+  OLD_SOM=$(cast balance "$OLD_VAULT" --rpc-url "$RPC")
+  if [ "$OLD_SOM" != "0" ]; then
+    echo -n "    recovering "; cast to-unit "$OLD_SOM" ether
+    send "$OLD_VAULT" "withdrawNative(uint256)" "$OLD_SOM"
+  fi
+fi
+
 # ---------------------------------------------------------------- 3. collateral
 if [ "$OLD_USDC" != "0" ] && [ "$OLD_VAULT" != "$VAULT" ]; then
   echo "3. moving $OLD_USDC tUSDC from the previous vault"

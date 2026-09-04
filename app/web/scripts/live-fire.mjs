@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { SHANNON, shannonChain, txUrl } from "../src/chain/config.js";
 import { vaultAbi } from "../src/chain/abi.js";
 import { factoryAbi } from "../src/chain/factoryAbi.js";
-import { fetchOpenMarkets, fetchBook, crossingPrice } from "../src/chain/markets.js";
+import { fetchOpenMarkets, fetchBook, crossingPrice, fetchPoolParams, sizeOrder, orderCost } from "../src/chain/markets.js";
 import { nextWindowFor } from "../src/strategy.js";
 import { marketName } from "../src/lib/language.js";
 import { checkTradable } from "../src/chain/module.js";
@@ -79,11 +79,17 @@ async function arm() {
   if (!check.ok) throw new Error(`successor not tradable: ${check.problems.join("; ")}`);
 
   const book = await fetchBook(successor.marketId);
-  const price = crossingPrice(book, false) ?? 500000n; // buying YES on outcome 0
+  const raw = crossingPrice(book, false) ?? 500000n;    // buying YES on outcome 0
   const cap = 2000000n;                                 // $2, inside the $5 account limit
-  let quantity = cap / price;
-  if (quantity < 1n) quantity = 1n;
-  const notional = price * quantity;
+
+  // The pool rejects anything below its minimum quantity or off its lot grid,
+  // and it reverts rather than returning false, so sizing follows its rules.
+  const params = await fetchPoolParams(successor.pool, pub);
+  const sized = sizeOrder({ price: raw, budget: cap, ...params });
+  if (!sized) throw new Error(`one minimum lot costs more than the ${usd(cap)} budget`);
+  const { price, quantity } = sized;
+  const notional = orderCost(price, quantity);
+  say(`pool rules  tick ${params.tickSize} min ${params.minQuantity} lot ${params.lotSize}`);
 
   say(`watching   ${marketName(trigger)}  settles in ${trigger.expiry - now}s`);
   say(`trades into ${marketName(successor)}  pool ${successor.pool}`);

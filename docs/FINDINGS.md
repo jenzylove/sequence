@@ -53,6 +53,47 @@ make progress, and nothing in the API says so.
 
 ---
 
+## 1b. Reactivity did not deliver an event that OracleHub demonstrably emitted
+
+**Observed.** This is the most serious thing we hit, and we reproduced it three
+times across three separate vaults and three separate subscriptions.
+
+For each armed market we confirmed, in this order:
+
+1. the market finalized on chain — `isResolved() == true`, a payout vector, and
+   `clobStatus: Finalized` on the indexer;
+2. OracleHub emitted `AnswerDelivered` in the resolving block, matching our
+   subscription's `topic0` and carrying our `marketId` as `topic2`. For example
+   tx `0xde5c9be3…fbeb4`, questionId 50664;
+3. our subscribed contract was never invoked. Its step stayed `ARMED`, its
+   `consumed` map was empty, and it emitted nothing.
+
+`pokeOracle(oracleQuestionId)` succeeded (`status 0x1`) on already-resolved
+questions but emitted no logs, which is correct — there is nothing to re-fan-out
+once a question is answered — so it is not a recovery route for a delivery that
+was already missed. `voidExpired()` is the dead-oracle escape hatch and would
+have been wrong here: the oracle answered fine.
+
+**Why it matters.** A product whose whole promise is "it runs without you"
+cannot be built on a delivery that silently does not arrive. The failure is
+invisible: no revert, no event, no status change. The strategy simply never
+happens, and the user is told it is still waiting.
+
+**Suggestion.** A way to query a subscription's health from the contract or an
+RPC — last delivery, missed count, active/inactive — would let an application
+notice and say so. Better still, a documented replay or catch-up entry point for
+a subscriber that missed a block.
+
+**What we did about it.** Reactivity remains the primary path. We added
+`syncResolution(bytes32 marketId)`: permissionless, takes only a market id, and
+reads the outcome from the market contract itself, then runs the identical
+internal state machine including the same idempotency key, so a late delivery
+cannot double-fire it. With that path a stuck sequence recovered end to end on
+chain: `Triggered -> Placed`, $2.00 of collateral moved, 4.0 NO contracts
+received (tx `0xe8a0c031…df4f2`).
+
+---
+
 ## 2. Indexer schema drift broke a working query silently
 
 **Observed.** Our resolution fetcher was written against fields like
@@ -129,6 +170,30 @@ $0.330, making the NO ask $0.670.
 **Suggestion.** Document the complement relationship next to the order side enum,
 or expose a derived NO book. The `kind` enum (`0 BUY_YES, 1 SELL_YES, 2 BUY_NO,
 3 SELL_NO`) implies four sides of a book that is actually quoted on two.
+
+---
+
+## 5b. Quantity units and pool minimums are easy to get wrong, and the pool reverts
+
+**Observed.** `placeBinaryOrder` takes a price and a quantity, and we assumed
+whole contracts. The pool's `getOrderBookParameters()` returns
+`tickSize 1000, minQuantity 1000, lotSize 1000`, and an order of quantity 2
+reverts `QuantityBelowMinimum(2, 1000)` rather than returning `false`.
+
+Quantities are base units in 6 decimals and prices are 6-decimal fractions of one
+collateral unit, so an order costs `price * quantity / 1e6`. We had been
+computing `price * quantity`, which overstates the commitment by a factor of a
+million and made every risk cap unreachable.
+
+**Why it matters.** Two compounding traps. The units error is silent — the
+arithmetic works, it is just wrong by 1e6 — and the minimum-quantity error
+*reverts*, which for a contract acting inside a callback aborts the whole frame
+and leaves it with no record of why. We now catch the revert and record a skip.
+
+**Suggestion.** A worked example in the docs showing cost for a given price and
+quantity would remove the units ambiguity entirely. Returning `false` rather than
+reverting for order-validation failures would let callback-driven integrations
+record a refusal instead of losing the frame.
 
 ---
 
