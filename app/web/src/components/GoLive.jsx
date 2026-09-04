@@ -18,6 +18,9 @@ export default function GoLive({ vault, wallet }) {
   if (!state || !vault.isOwner(wallet.account)) return null;
 
   const funded = state.native >= SUBSCRIPTION_STAKE;
+  // Top up the shortfall rather than sending a fresh 32 SOM every time. A vault
+  // holding 20 needs 12, not another full stake on top of what it already has.
+  const shortfall = funded ? 0n : SUBSCRIPTION_STAKE - state.native;
   const collateralised = state.bankroll > 0n;
   const pools = [...new Set(vault.steps.filter((s) => s.exists && s.pool).map((s) => s.pool))];
 
@@ -39,10 +42,12 @@ export default function GoLive({ vault, wallet }) {
     {
       key: "fund",
       title: "Turn on market results",
-      detail: `Your account puts up a 32 SOM stake so the network will push market results straight to it. Currently holding ${fmtSom(state.native)}.`,
+      detail: funded
+        ? `Your account holds the ${fmtSom(SUBSCRIPTION_STAKE)} stake the network requires.`
+        : `Your account puts up a ${fmtSom(SUBSCRIPTION_STAKE)} stake so the network will push market results straight to it. It holds ${fmtSom(state.native)}, so it needs ${fmtSom(shortfall)} more.`,
       complete: funded,
-      action: "Put up the stake",
-      run: () => fundVault({ provider: wallet.provider, account: wallet.account, value: SUBSCRIPTION_STAKE }),
+      action: `Add ${fmtSom(shortfall)}`,
+      run: () => fundVault({ provider: wallet.provider, account: wallet.account, value: shortfall }),
     },
     {
       key: "subscribe",
