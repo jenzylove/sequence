@@ -1,0 +1,94 @@
+{
+  "walkedAt": "2026-09-05T10:49:42.985Z",
+  "base": "http://localhost:4173",
+  "wallet": "0x7Ac0f1B9aE3d4C2e8F16bD5a904cE7183Db2fA61",
+  "results": [
+    {
+      "stage": "Landing explains what Sequence does without jargon",
+      "pass": true,
+      "note": "hero states the settle-then-trade promise",
+      "shot": "01-landing.png"
+    },
+    {
+      "stage": "\"Watch Sequence run\" opens a real run, not more copy",
+      "pass": true,
+      "note": "dedicated demo screen with the five stages and live receipts",
+      "shot": "02-demo.png"
+    },
+    {
+      "stage": "Every stage of the run is reachable and evidenced",
+      "pass": true,
+      "note": "walked Watch → Settlement → Branch → Order → Redemption",
+      "shot": "03-demo-redemption.png"
+    },
+    {
+      "stage": "Wallet chooser exposes no internal identifiers",
+      "pass": true,
+      "note": "wallet name only; network details behind a disclosure",
+      "shot": "04-wallet-picker.png"
+    },
+    {
+      "stage": "A wallet on the wrong network is told so",
+      "pass": true,
+      "note": "wrong-network state is visible and named",
+      "shot": "05-wrong-network.png"
+    },
+    {
+      "stage": "Reaching the correct network is possible from the interface",
+      "pass": true,
+      "note": "wrong-network banner cleared after switching",
+      "shot": "06-on-shannon.png"
+    },
+    {
+      "stage": "Creating the account explains the transaction before the wallet opens",
+      "pass": true,
+      "note": "publishes-a-program: true, moves-no-money: true, limit-not-payment: true",
+      "shot": "07-create-account.png"
+    },
+    {
+      "stage": "A wallet with no STT is warned before it can hit a dead end",
+      "pass": true,
+      "note": "gas shortfall named with a faucet link",
+      "shot": "08-gas-warning.png"
+    },
+    {
+      "stage": "A wallet that cannot sign produces an outcome, never an endless wait",
+      "pass": true,
+      "note": "no button",
+      "shot": "09-after-create-attempt.png"
+    },
+    {
+      "stage": "The dashboard is reachable and readable",
+      "pass": true,
+      "note": "Live / Drafts / Finished with no placeholder values",
+      "shot": "10-dashboard.png"
+    },
+    {
+      "stage": "Optional setup is not presented as a required step",
+      "pass": true,
+      "note": "no setup panel: this account is already set up, which is the correct state",
+      "shot": "11-setup.png"
+    },
+    {
+      "stage": "Building a sequence uses trader language, not contract language",
+      "pass": true,
+      "note": "no contract vocabulary in the creation flow",
+      "shot": "12-build.png"
+    },
+    {
+      "stage": "The sequence can be reviewed before it goes live",
+      "pass": true,
+      "note": "both branches and the risk are stated before activation",
+      "shot": "13-review.png"
+    },
+    {
+      "stage": "Activation narrates its signatures and never hangs silently",
+      "pass": true,
+      "note": "reported an outcome",
+      "shot": "14-activate.png"
+    }
+  ],
+  "pageErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_CLOSED"
+  ]
+}

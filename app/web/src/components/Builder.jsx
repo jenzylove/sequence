@@ -5,6 +5,9 @@ import {
   validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor, isCadenceSubstitution,
 } from "../strategy.js";
 import { armStep, queueStep, ensurePoolAllowances, publicClient } from "../chain/vault.js";
+import { vaultAbi } from "../chain/abi.js";
+import { checkGas } from "../chain/preflight.js";
+import { readableError } from "../hooks/useTx.js";
 import {
   fetchBook, crossingPrice, fetchPoolParams, sizeOrder, orderCost, DEFAULT_POOL_PARAMS,
 } from "../chain/markets.js";
@@ -27,6 +30,9 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const [selected, setSelected] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
   const [arming, setArming] = useState(false);
+  // Activation is several signatures, not one. Saying which one is open, and
+  // how many remain, is the difference between a flow and a pile of popups.
+  const [progress, setProgress] = useState(null);
   const [armResult, setArmResult] = useState(null);
   const [book, setBook] = useState(null);
   const [tradable, setTradable] = useState(null);
@@ -210,6 +216,18 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const activate = async () => {
     setArming(true);
     setArmResult(null);
+    setProgress({ label: "Checking the markets are still tradable…", at: 0, of: 0 });
+
+    // Nothing below is worth opening a wallet for if the wallet cannot pay.
+    const gas = await checkGas({
+      account: wallet.account,
+      contract: { address: vault.address, abi: vaultAbi, functionName: "cancelStep", args: [onchainStepId(strategy, strategy.steps[0])] },
+    });
+    if (gas.ok === false && gas.reason === "insufficient-gas") {
+      setArmResult({ ok: false, error: `${gas.message} Top up before activating; nothing was sent.` });
+      setArming(false); setProgress(null);
+      return;
+    }
 
     // The indexer can lag, and pools are recycled between windows. Confirm
     // against the module itself before asking anyone to sign.
@@ -217,7 +235,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       const check = await checkTradable(s.successorMarketId, s.pool);
       if (!check.ok) {
         setArmResult({ ok: false, error: `${check.problems[0]} Pick another market and try again.` });
-        setArming(false);
+        setArming(false); setProgress(null);
         setTradable(check);
         return;
       }
@@ -226,6 +244,8 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
 
     // Every pool this sequence could execute against must be able to draw the
     // collateral, not just the first one.
+    const total = strategy.steps.length + 1;   // allowances + each step
+    setProgress({ label: "Giving the markets permission to draw your funds", at: 1, of: total });
     try {
       await ensurePoolAllowances({
         provider: wallet.provider, account: wallet.account,
@@ -234,8 +254,8 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         amount: strategy.maxOutstanding,
       });
     } catch (cause) {
-      setArmResult({ ok: false, error: cause?.shortMessage || "Could not give the market permission to draw funds." });
-      setArming(false);
+      setArmResult({ ok: false, error: readableError(cause) });
+      setArming(false); setProgress(null);
       return;
     }
     const done = [];
@@ -246,6 +266,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       for (let i = strategy.steps.length - 1; i >= 1; i -= 1) {
         const s = strategy.steps[i];
         const next = i + 1 < ids.length ? ids[i + 1] : undefined;
+        setProgress({ label: `Saving step ${i + 1} of your sequence`, at: total - i, of: total });
         await queueStep({
           provider: wallet.provider, account: wallet.account, vault: vault.address,
           stepId: ids[i], step: toVaultStep(s, Date.now(), next),
@@ -254,6 +275,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
 
       for (const [i, s] of [strategy.steps[0]].entries()) {
         const stepId = ids[i];
+        setProgress({ label: "Arming the first step — this is the one that goes live", at: total, of: total });
         const result = await armStep({
           provider: wallet.provider, account: wallet.account, vault: vault.address, stepId,
           step: toVaultStep(s, Date.now(), ids[1]),
@@ -271,9 +293,10 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       setArmResult({ ok: true, hash: done[0], count: strategy.steps.length });
       onActivated?.(strategy);
     } catch (cause) {
-      setArmResult({ ok: false, error: cause?.shortMessage || cause?.message || "That did not go through. Nothing was risked." });
+      setArmResult({ ok: false, error: readableError(cause) });
     } finally {
       setArming(false);
+      setProgress(null);
     }
   };
 
@@ -526,9 +549,22 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
 
               <div className="mt-7">
                 {wallet.connected ? (
+                  <>
                   <button disabled={!ready || arming} onClick={activate} className="soft-button w-full bg-[#111014] py-3 text-white disabled:opacity-35">
-                    {arming ? "Approve in your wallet…" : `Activate sequence · risk ${fmt(strategy.maxOutstanding)}`}
+                    {arming ? "Activating…" : `Activate sequence · risk ${fmt(strategy.maxOutstanding)}`}
                   </button>
+                  {arming && progress && (
+                    <div className="mt-3" role="status" aria-live="polite">
+                      <p className="flex items-start gap-2 text-[10px] font-semibold leading-[1.6] text-[#7f7984]">
+                        <span className="tx-spinner mt-[3px]" aria-hidden="true" />
+                        <span>{progress.of > 0 ? `Signature ${progress.at} of ${progress.of}: ` : ""}{progress.label}</span>
+                      </p>
+                      <p className="mt-1.5 text-[10px] leading-[1.6] text-[#a19ca5]">
+                        Approve each one in your wallet. Nothing is at risk until the last one confirms.
+                      </p>
+                    </div>
+                  )}
+                  </>
                 ) : (
                   <button onClick={onWallet} className="soft-button w-full bg-[#111014] py-3 text-white">Connect wallet to activate</button>
                 )}

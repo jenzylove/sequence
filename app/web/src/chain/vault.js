@@ -157,20 +157,28 @@ export async function armStep({ provider, account, stepId, step, vault = SHANNON
   return { hash, receipt, blockNumber: receipt.blockNumber, status: receipt.status };
 }
 
-export async function sendVaultTx({ provider, account, functionName, args = [], vault = SHANNON.vault }) {
+// `onHash` fires the moment the wallet returns a signature, which is the point
+// where responsibility passes from the person to the network. Without it the
+// interface cannot tell "still waiting on you" apart from "waiting on a block",
+// and shows one misleading label for both.
+export async function sendVaultTx({ provider, account, functionName, args = [], vault = SHANNON.vault, onHash }) {
   const client = publicClient();
   const { request } = await client.simulateContract({ address: vault, abi: vaultAbi, functionName, args, account });
   const hash = await walletClientFor(provider, account).writeContract(request);
+  onHash?.(hash);
   const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("The network rejected this transaction, so nothing changed.");
   return { hash, receipt, blockNumber: receipt.blockNumber, status: receipt.status };
 }
 
 // Fund the vault's own native balance. Somnia Reactivity charges the
 // subscription stake to the subscribing contract, so the vault must hold it.
-export async function fundVault({ provider, account, value, vault = SHANNON.vault }) {
+export async function fundVault({ provider, account, value, vault = SHANNON.vault, onHash }) {
   const client = publicClient();
   const hash = await walletClientFor(provider, account).sendTransaction({ to: vault, value });
+  onHash?.(hash);
   const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("The network rejected this transfer, so nothing moved.");
   return { hash, receipt, blockNumber: receipt.blockNumber, status: receipt.status };
 }
 
@@ -210,16 +218,24 @@ export async function vaultForAccount(account, factory = SHANNON.factory) {
 
 // Deploy the connected wallet's own vault. They own it; the factory keeps no
 // authority over it.
-export async function createVault({ provider, account, maxOutstanding, factory = SHANNON.factory }) {
+export async function createVault({ provider, account, maxOutstanding, factory = SHANNON.factory, onHash }) {
   const client = publicClient();
   const { request } = await client.simulateContract({
     address: factory, abi: factoryAbi, functionName: "createVault",
     args: [maxOutstanding], account,
   });
   const hash = await walletClientFor(provider, account).writeContract(request);
+  onHash?.(hash);
   const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("The network rejected the account creation, so nothing was created.");
   const vault = await vaultForAccount(account, factory);
   return { hash, receipt, vault, status: receipt.status };
+}
+
+// The exact call `createVault` will make, so it can be gas-estimated before a
+// wallet is opened.
+export function createVaultCall({ maxOutstanding, factory = SHANNON.factory }) {
+  return { address: factory, abi: factoryAbi, functionName: "createVault", args: [maxOutstanding] };
 }
 
 // How much of the vault's collateral a given pool may currently draw.

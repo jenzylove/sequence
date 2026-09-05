@@ -5,6 +5,7 @@ import HowItWorks from "./components/HowItWorks.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import Builder from "./components/Builder.jsx";
 import Operations from "./components/Operations.jsx";
+import DemoRun from "./components/DemoRun.jsx";
 import Closing from "./components/Closing.jsx";
 import WalletDialog from "./components/WalletDialog.jsx";
 import Provision from "./components/Provision.jsx";
@@ -15,6 +16,7 @@ import { useVault } from "./hooks/useVault.js";
 // Four screens, exactly one on at a time.
 //
 //   landing  the public page. Always reachable, connected or not, via the logo.
+//   demo     a real recorded run, replayed. Needs no wallet.
 //   home     Your sequences: what is live, drafted and finished.
 //   build    the creation flow, and the only place a sequence is made.
 //   details  the raw onchain record.
@@ -24,7 +26,7 @@ import { useVault } from "./hooks/useVault.js";
 //   - connecting a wallet never moves the user on its own; only a gated action
 //     they asked for does, and then only to the screen that action implied
 //   - leaving the builder returns to home, which is where sequences live
-const VIEWS = ["landing", "home", "build", "details"];
+const VIEWS = ["landing", "demo", "home", "build", "details"];
 
 export default function App() {
   const [view, setView] = useState("landing");
@@ -62,13 +64,26 @@ export default function App() {
   };
 
   // Disconnecting drops back to the public page, since nothing else can render.
-  useEffect(() => { if (!connected && view !== "landing") show("landing"); }, [connected, view]);
+  // The demo is recorded chain history and needs no wallet, so it is not one of
+  // the screens a disconnected visitor gets pushed off.
+  const PUBLIC_VIEWS = ["landing", "demo"];
+  useEffect(() => { if (!connected && !PUBLIC_VIEWS.includes(view)) show("landing"); }, [connected, view]);
 
   const onLanding = view === "landing";
 
   return (
     <div id="top" className="min-h-screen bg-paper font-sans text-ink">
       <div className={onLanding ? "landing-shell" : "app-shell"}>
+        {connected && !wallet.onShannon && (
+          <div className="network-banner" role="alert">
+            <span>
+              Your wallet is on a different network. Sequence runs on <strong>Somnia Shannon</strong>, a test network — nothing here can load until you switch.
+            </span>
+            <button onClick={() => wallet.switchNetwork()} className="soft-button bg-[#111014] px-4 py-2 text-white">
+              Switch to Somnia Shannon
+            </button>
+          </div>
+        )}
         <Nav
           connected={connected}
           wallet={wallet}
@@ -79,10 +94,14 @@ export default function App() {
           onDetails={() => (connected ? show("details") : askToConnect("Connect a wallet to see the onchain record.", "details"))}
           onWallet={() => askToConnect(null, null)}
         />
-        {onLanding && <Hero onBuild={() => startBuilding()} onOperations={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} />}
+        {onLanding && <Hero onBuild={() => startBuilding()} onWatch={() => show("demo")} />}
       </div>
 
       {onLanding && <HowItWorks />}
+
+      {/* Watching a run needs no wallet and no account: it is recorded chain
+          history, so it stays reachable to someone still deciding. */}
+      {view === "demo" && <DemoRun onBuild={() => startBuilding()} />}
 
       {/* A wallet with no account cannot use any product screen, so it is
           offered its own rather than shown someone else's balances. */}

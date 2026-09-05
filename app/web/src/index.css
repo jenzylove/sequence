@@ -267,3 +267,16 @@ button, a { -webkit-tap-highlight-color: transparent; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* A transaction in flight. Motion is the difference between "working" and
+   "frozen", and this product had no way to tell those apart. */
+.tx-spinner { display: inline-block; width: 9px; height: 9px; border-radius: 999px;
+  border: 1.5px solid #cfc9dd; border-top-color: #6f58c2; animation: tx-spin .7s linear infinite; }
+@keyframes tx-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tx-spinner { animation-duration: 2.4s; } }
+
+/* A wrong network blocks everything, so it is said in a place that cannot be
+   dismissed rather than inside a modal the user has already closed. */
+.network-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 14px; padding: 12px 22px; background: #fdf3ec; border-bottom: 1px solid #f0dcc6;
+  font-size: 11px; line-height: 1.6; color: #8a6a34; }

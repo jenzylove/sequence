@@ -347,7 +347,20 @@ const connectViaBuild = async (page, { expect = "#build" } = {}) => {
   await page.waitForTimeout(1200);
   const details = await page.locator("#how-it-works").innerText();
   check("onchain details surface exposes the raw record", /AnswerDelivered|0xA9A9AA93/i.test(details));
-  check("go-live is framed as one-time setup", /One-time setup/i.test(details));
+  // Setup is no longer framed as one undifferentiated block of "one-time setup":
+  // funding is required, the staked automation is not, and presenting the second
+  // as mandatory sent people at a 32 STT stake they do not need.
+  // An "Optional" badge only renders while that step is outstanding, so for a
+  // fully configured account the durable property is the ordering and the
+  // absence of the old claim that nothing runs without the stake.
+  {
+    const panel = /Get ready to trade|Set your account up/i.test(details);
+    const fundsFirst = details.indexOf("Put trading funds in");
+    const autoLast = details.indexOf("Run it hands-free");
+    const noFalseBlocker = !/nothing will run on its own/i.test(details);
+    check("setup leads with funding and never calls the staked step a blocker",
+      panel && fundsFirst > -1 && autoLast > fundsFirst && noFalseBlocker);
+  }
 
   await page.screenshot({ path: join(shots, "e2e-details.png"), fullPage: true });
   await context.close();
