@@ -1,26 +1,26 @@
 {
   "note": "A genuinely new wallet completing the journey and signing for itself. No address injection.",
-  "freshWallet": "0x267E598392883F3037E90Fd1f34b12BC53FfdBDF",
-  "freshVault": "0xc14ceD544773693cF2CD25a08FCe4C951D372197",
+  "freshWallet": "0x71bFaf0868f4B4F75Cf16F8D379eD19E1817F42A",
+  "freshVault": "0x98c5Fba603676854b1d57B19132Fe9703e8BA52c",
   "authorWallet": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
-  "authorVault": "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
-  "factory": "0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc",
+  "authorVault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+  "factory": "0xF492234a4b522D19dd76dBB435ad9471a652f950",
   "riskLimit": "3000000",
-  "fundedWith": "0.4 SOM (gas only)",
-  "stepId": "0xb2b6f5afe7e3a327e0d1c21bfd235f832bb875d10aa24e36deef577504454527",
+  "fundedWith": "1.5 SOM (gas only)",
+  "stepId": "0xbe779cc626e7820e63e1835f2030c3990537ce0bbc00bb95f15ac76eb269cb21",
   "order": {
-    "price": "999000",
-    "quantity": "1001000",
-    "cost": "999999"
+    "price": "626000",
+    "quantity": "1597000",
+    "cost": "999722"
   },
   "stepStatus": 1,
   "transactions": {
-    "funded": "0x0aac7a295309363f48c2a1644221b5999e3271766fd1615c20c908297ad9f81d",
-    "createdVault": "0x3e4db16815375ddc1c7d62862c9bb5e8d7de32262731f3cfcd4dec90c3526cde",
-    "activated": "0x86cf1d4818ec98ea5e429aba48e648e9ff9cda1197be1d3ff3bfd198c417c014"
+    "funded": "0x17f066bf5107cb589dceb8e8ba962875ebb626fba200a9bb6f637d7a5f8b5b01",
+    "createdVault": "0x80b8574f2c638272c945f604d4869c4c7867c214b37f67314b8c1c6f708db01d",
+    "activated": "0x53e6946cf8aee53753dec289a3ea63cd041cd3505e83e241ddafcca48d275030"
   },
-  "armedBlock": "479781071",
-  "at": "2026-09-04T19:47:08.633Z",
+  "armedBlock": "480198557",
+  "at": "2026-09-05T07:23:03.351Z",
   "steps": [
     {
       "name": "starts with no account",
@@ -29,17 +29,17 @@
     },
     {
       "name": "funded with gas only",
-      "detail": "0.4 SOM, no collateral and no stake",
-      "tx": "0x0aac7a295309363f48c2a1644221b5999e3271766fd1615c20c908297ad9f81d"
+      "detail": "1.5 SOM, no collateral and no stake",
+      "tx": "0x17f066bf5107cb589dceb8e8ba962875ebb626fba200a9bb6f637d7a5f8b5b01"
     },
     {
       "name": "created its own account",
-      "detail": "0xc14ceD544773693cF2CD25a08FCe4C951D372197",
-      "tx": "0x3e4db16815375ddc1c7d62862c9bb5e8d7de32262731f3cfcd4dec90c3526cde"
+      "detail": "0x98c5Fba603676854b1d57B19132Fe9703e8BA52c",
+      "tx": "0x80b8574f2c638272c945f604d4869c4c7867c214b37f67314b8c1c6f708db01d"
     },
     {
       "name": "owns it exclusively",
-      "detail": "owner is the fresh wallet; the author's vault is a different address (0x78dcAD22f904AE1cE156f4409D312C1438C93ef2)",
+      "detail": "owner is the fresh wallet; the author's vault is a different address (0x0185CA254C9e7b184b566e7037160334519cC9f6)",
       "tx": null
     },
     {
@@ -54,7 +54,7 @@
     },
     {
       "name": "built a sequence",
-      "detail": "watch BTC 5m -> trade BTC 1h, 1001000 @ $0.999 = $1.000",
+      "detail": "watch BTC 4h -> trade BTC 1d, 1597000 @ $0.626 = $1.000",
       "tx": null
     },
     {
@@ -65,7 +65,7 @@
     {
       "name": "activated it, signing for itself",
       "detail": "step status 1 (1 = live and waiting)",
-      "tx": "0x86cf1d4818ec98ea5e429aba48e648e9ff9cda1197be1d3ff3bfd198c417c014"
+      "tx": "0x53e6946cf8aee53753dec289a3ea63cd041cd3505e83e241ddafcca48d275030"
     }
   ],
   "notFunded": "This vault holds no collateral and no subscription stake, so it can arm but not execute. That is stated rather than implied."

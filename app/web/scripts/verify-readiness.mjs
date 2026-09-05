@@ -127,10 +127,19 @@ add("4", "risk", releases ? "OK" : "BLOCKED",
   releases ? "exposure is released" : "outstandingNotional only ever increases, so a rolling sequence blocks itself",
   releases ? null : "release exposure when a position settles or is redeemed");
 
-const redeems = /redeem/i.test(vaultSol);
-add("5", "capital", redeems ? "OK" : "OPEN",
-  redeems ? "redemption exists" : "no redemption path, so won collateral is never recycled",
-  redeems ? null : "add redemption once the rolling loop is proven");
+// Source containing the word "redeem" proves nothing. This wants the entry
+// point, and a recorded redemption that actually moved collateral on chain.
+const redeems = /function redeemPosition\(/.test(vaultSol);
+let redemption = null;
+try { redemption = JSON.parse(src("docs/REDEMPTION.json")).proof; } catch { /* none yet */ }
+const recycled = redemption && BigInt(redemption.collateralGained || "0") > 0n
+  && redemption.heldAfter?.yes === "0" && redemption.heldAfter?.no === "0";
+add("5", "capital", recycled ? "OK" : redeems ? "OPEN" : "BLOCKED",
+  recycled
+    ? `redeemed on chain: ${redemption.heldBefore.no !== "0" ? redemption.heldBefore.no : redemption.heldBefore.yes} outcome tokens became $${(Number(redemption.collateralGained) / 1e6).toFixed(4)} of spendable collateral (${redemption.txHash})`
+    : redeems ? "redeemPosition exists but no redemption has been recorded on chain"
+      : "no redemption path, so won collateral is never recycled",
+  recycled ? null : "run scripts/redeem-evidence.mjs");
 
 const fixedPrice = !/crossingPrice/.test(builder);
 add("7", "execution", fixedPrice ? "BLOCKED" : "OK",
@@ -155,14 +164,22 @@ add("1b", "multi-user", factoryAddr ? "OK" : "BLOCKED",
   factoryAddr ? `factory deployed at ${factoryAddr}` : "the factory exists in source but is not deployed or wired into the app",
   factoryAddr ? null : "deploy the factory and resolve each wallet's vault through it");
 
-// Installing a package is not integration. This is green only if application
-// code actually imports it.
-const importsSdk = ["src/chain/markets.js", "src/chain/module.js", "src/chain/vault.js", "src/strategy.js"]
-  .some((f) => /@somnia-chain\/markets-sdk/.test(src(`app/web/${f}`)));
-add("13", "integration", importsSdk ? "OK" : "OPEN",
-  importsSdk
-    ? "application code imports the markets SDK"
-    : "the app talks to the indexer and contracts directly; the SDK is a dev dependency used to derive and check ABIs, not a runtime integration");
+// Installing a package is not integration, and neither is importing it into a
+// script. This is green only when application code the browser actually ships
+// imports the SDK, a component renders what it returns, and the SDK is a real
+// dependency rather than a dev one.
+const positions = src("app/web/src/chain/positions.js");
+const sdkImported = /from "@somnia-chain\/markets-sdk"/.test(positions);
+const sdkUsed = ["binaryModuleReadAbi", "binarySettlementAbi", "erc6909Abi", "marketKey", "SOMNIA_TESTNET_ADDRESSES"]
+  .every((sym) => positions.includes(sym));
+const surfaced = /findClaimablePositions/.test(src("app/web/src/components/Dashboard.jsx"));
+let runtimeDep = false;
+try { runtimeDep = Boolean(JSON.parse(src("app/web/package.json")).dependencies?.["@somnia-chain/markets-sdk"]); } catch { /* none */ }
+const sdkReal = sdkImported && sdkUsed && surfaced && runtimeDep;
+add("13", "integration", sdkReal ? "OK" : "OPEN",
+  sdkReal
+    ? "positions.js reads market records, settlement and ERC-6909 balances through the SDK's own ABIs, address book and marketKey helper; the Dashboard renders the result and offers redemption"
+    : `SDK integration incomplete (import ${sdkImported}, symbols ${sdkUsed}, surfaced ${surfaced}, runtime dependency ${runtimeDep})`);
 
 const e2e = src("app/web/scripts/e2e.mjs");
 let freshProof = null;
@@ -185,6 +202,16 @@ add("14", "proof", proven ? "OK" : "BLOCKED",
     ? `captured on chain: armed -> ${proven.timeline.map((t) => t.event).join(" -> ")} (${proven.outcome})`
     : "no captured run of armed -> settled -> execution or truthful skip",
   proven ? null : "capture the loop end to end");
+
+// The full capital cycle, on the vault that is currently deployed: a settlement
+// drove a real order, that market settled in turn, and the position became
+// collateral again. This is the one that says the product actually rolls.
+const fullCycle = recycled && redemption.vault?.toLowerCase() === SHANNON.vault.toLowerCase();
+add("18", "proof", fullCycle ? "OK" : "OPEN",
+  fullCycle
+    ? `the whole loop on ${redemption.vault}: settlement -> order -> settlement -> redemption, +$${(Number(redemption.collateralGained) / 1e6).toFixed(4)}`
+    : "the capital cycle has not been closed end to end on the deployed vault",
+  fullCycle ? null : "run scripts/redeem-evidence.mjs against the deployed vault");
 
 const reactive = (fire?.runs || []).find((r) =>
   (r.timeline || []).some((t) => t.event === "Triggered")

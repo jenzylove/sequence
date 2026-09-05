@@ -1,0 +1,70 @@
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "startedAt": "2026-09-05T00:35:33.329Z",
+      "result": "failed: the trigger never settled inside the window"
+    },
+    {
+      "attempt": 2,
+      "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "startedAt": "2026-09-05T01:13:38.040Z",
+      "result": "failed: fetch failed"
+    },
+    {
+      "attempt": 3,
+      "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "startedAt": "2026-09-05T01:13:38.245Z",
+      "result": "failed: fetch failed"
+    },
+    {
+      "attempt": 4,
+      "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "startedAt": "2026-09-05T01:13:38.484Z",
+      "result": "failed: fetch failed"
+    }
+  ],
+  "summary": {
+    "proven": false,
+    "note": "No winning position after 4 attempts. Every attempt is recorded above."
+  },
+  "proof": {
+    "note": "A position taken through the product's own path, on a market that settled, redeemed back into spendable collateral.",
+    "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc6",
+    "marketAddress": "0x204428DBe9e2B6A33720284Cb8eCA33C91Ff14bD",
+    "settlement": {
+      "finalized": true,
+      "voided": false,
+      "winner": 1,
+      "payouts": [
+        "0",
+        "10000000"
+      ]
+    },
+    "heldBefore": {
+      "yes": "0",
+      "no": "4366000"
+    },
+    "heldAfter": {
+      "yes": "0",
+      "no": "0"
+    },
+    "collateralBefore": "198073182",
+    "collateralAfter": "202439182",
+    "collateralGained": "4366000",
+    "redeemedEvents": [
+      {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc6",
+        "outcomeIdx": 1,
+        "tokens": "4366000",
+        "collateral": "4366000"
+      }
+    ],
+    "txHash": "0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34",
+    "explorer": "https://shannon-explorer.somnia.network/tx/0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34",
+    "blockNumber": "480196149",
+    "redeemedAt": "2026-09-05T07:19:04.050Z"
+  }
+}

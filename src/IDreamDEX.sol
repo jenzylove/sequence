@@ -49,4 +49,21 @@ interface IBinaryMarket {
     function payoutNumerators() external view returns (uint256[] memory);
     function settlementWindow() external view returns (uint64);
     function expiry() external view returns (uint64);
+    function outcomeToken() external view returns (address);
+}
+
+// Redemption entry on BinaryMarketsModule (from @somnia-chain/markets-sdk
+// `binaryModuleWriteAbi`). The module pulls the caller's winning outcome tokens
+// and redeems through the settlement singleton; operatorId and venueId are
+// attribution only and may be zero.
+interface IBinaryModuleRedeem {
+    function redeem(uint32 operatorId, bytes32 venueId, bytes32 marketId, uint8 outcomeIdx, uint256 amount) external;
+}
+
+// The protocol-wide ERC-6909 singleton holding every market's YES/NO positions
+// as ids. Approval is per-operator, so one setOperator covers every market.
+interface IOutcomeToken6909 {
+    function balanceOf(address owner, uint256 id) external view returns (uint256);
+    function isOperator(address owner, address spender) external view returns (bool);
+    function setOperator(address spender, bool approved) external returns (bool);
 }

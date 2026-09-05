@@ -50,10 +50,12 @@ if (before !== "0x0000000000000000000000000000000000000000") throw new Error("a 
 record("starts with no account", `factory.vaultFor() returns the zero address, so the app offers to create one`);
 
 // ---- gas only ------------------------------------------------------------
-const gas = 400000000000000000n; // 0.4 SOM, enough to deploy and arm
+// Deploying a vault through the factory estimates around 65M gas on Shannon, so
+// 0.4 SOM sat close enough to the cost that the send was refused outright.
+const gas = 1500000000000000000n; // 1.5 SOM, gas only
 const fundTx = await funderWallet.sendTransaction({ to: fresh.address, value: gas });
 await pub.waitForTransactionReceipt({ hash: fundTx });
-record("funded with gas only", `0.4 SOM, no collateral and no stake`, fundTx);
+record("funded with gas only", `1.5 SOM, no collateral and no stake`, fundTx);
 
 // ---- it creates its OWN vault -------------------------------------------
 const { request } = await pub.simulateContract({

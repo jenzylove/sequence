@@ -12,8 +12,8 @@ export const SHANNON = {
   testUsdc: "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
   // ERC-6909 singleton holding every market's YES/NO positions as ids.
   outcomeToken: "0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9",
-  vault: "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
-  factory: "0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc",
+  vault: "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+  factory: "0xF492234a4b522D19dd76dBB435ad9471a652f950",
   nativeCurrency: { name: "Somnia", symbol: "STT", decimals: 18 },
 };
 
