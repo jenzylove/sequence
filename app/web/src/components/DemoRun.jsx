@@ -27,7 +27,7 @@ export default function DemoRun({ onBuild }) {
           trail={[{ label: "Watch a run" }]}
           tag="Watch a run"
           title="One sequence, start to finish."
-          blurb="This is a real run on the Somnia test network, replayed stage by stage. Every number below was read back off the chain, and every stage links to the transaction that produced it."
+          blurb="A real run on the Somnia test network, replayed stage by stage. It was armed once and then advanced by the network on its own. Every number was read back off the chain, and every stage links to the transaction that produced it."
         />
 
         <div className="mt-9 flex flex-wrap items-center gap-2">
@@ -54,8 +54,19 @@ export default function DemoRun({ onBuild }) {
 
         <div className="workspace-card mt-6 max-w-[820px]">
           <div className="p-7 lg:p-9">
-            <div className="micro-label">Stage {index + 1} of {DEMO_STAGES.length}</div>
+            <div className="micro-label">
+              {stage.separate ? "A separate proven step" : `Stage ${index + 1} of ${DEMO_STAGES.length}`}
+            </div>
             <h3 className="mt-2.5 text-[24px] font-extrabold tracking-[-.04em] text-[#151318]">{stage.title}</h3>
+
+            {/* Two runs must not be blurred into one story. */}
+            {stage.separate && (
+              <p className="mt-3 rounded-sm border border-[#e6e2ee] bg-[#faf9fd] px-4 py-3 text-[10px] leading-[1.7] text-[#6f6879]">
+                <strong className="font-bold text-[#4b4650]">From a different run.</strong> The four stages above are one
+                continuous run whose position is still open. This step is shown from an earlier run on the same account,
+                so that the full cycle is evidenced rather than implied.
+              </p>
+            )}
             <p className="mt-3.5 max-w-[560px] text-[13px] leading-[1.75] text-[#5f5a66]">{stage.plain}</p>
             <p className="mt-3 max-w-[560px] text-[11px] leading-[1.75] text-[#8b8590]">{stage.detail}</p>
 
@@ -104,7 +115,9 @@ export default function DemoRun({ onBuild }) {
         </div>
 
         <p className="mt-6 max-w-[820px] text-[10px] leading-[1.7] text-[#a19ca5]">
-          Test network. The funds shown are test tokens with no real value.
+          Stages 1 to 4 are one run, advanced by Somnia Reactivity with no manual step. Redemption is shown from an
+          earlier run on the same account, because the run above has not settled yet. Test network: the funds shown are
+          test tokens with no real value.
         </p>
       </div>
     </section>

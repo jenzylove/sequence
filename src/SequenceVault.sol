@@ -268,11 +268,17 @@ contract SequenceVault is SomniaEventHandler {
     /// Drive a step from the market's own on-chain resolution, without waiting
     /// for a delivered event.
     ///
-    /// Reactivity is the primary path and stays that way. This exists because a
-    /// delivery can be missed: we observed OracleHub emit AnswerDelivered for a
-    /// market, the market finalize on chain, and the subscription never invoke
-    /// this contract, leaving a step ARMED for ever with the trader's rules
-    /// unrun. A sequence that silently stops is worse than one that trades.
+    /// Reactivity is the primary path and stays that way; it is what actually
+    /// drives a sequence in normal operation. This is the backstop for the case
+    /// where a delivery is delayed or never arrives, which would otherwise leave
+    /// a step ARMED for ever with the trader's rules unrun. A sequence that
+    /// silently stops is worse than one that trades.
+    ///
+    /// An earlier version of this comment cited a delivery we had observed fail.
+    /// That observation did not survive review - it came from an evidence
+    /// harness that matched the wrong log entirely - so it is withdrawn. The
+    /// backstop stays regardless: a delivery guarantee is not something this
+    /// contract can verify from the inside, and being recoverable costs nothing.
     ///
     /// Permissionless on purpose: anyone may nudge a stuck step, because the
     /// caller supplies nothing but a market id. The outcome is read from the

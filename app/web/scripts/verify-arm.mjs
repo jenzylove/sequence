@@ -37,17 +37,48 @@ validate(overCap).some((e) => /cap/.test(e.message))
   ? ok("cap validation rejects an oversized step")
   : fail("cap validation rejects an oversized step");
 
-// Is the deployed vault the code this build produces? Counting struct fields
-// went stale the moment the struct grew, so the deployed bytecode is compared
-// against the compiled artifact instead. The tail carries the metadata hash of
-// the exact source, so this cannot drift.
+// Is the deployed vault the code this build produces?
+//
+// Two things legitimately differ between a compiled artifact and the same
+// contract once deployed, and neither means the code is wrong:
+//
+//   - immutables. The artifact holds zeroed placeholders; the deployed copy has
+//     the owner, module and collateral written into the code itself. The
+//     artifact ships the exact byte ranges, so they are masked out rather than
+//     guessed at.
+//   - the CBOR metadata trailer, which is a hash of the source *text*. Editing a
+//     comment changes it while the executable code is byte-for-byte identical.
+//
+// So the executable code is compared in full with those masked, and the source
+// hash is reported separately. That way a docstring fix is reported as a
+// docstring fix instead of masquerading as a stale deployment and pushing us
+// into a redeploy that would change nothing.
+const stripMetadata = (body) => {
+  const len = parseInt(body.slice(-4), 16);
+  if (!Number.isFinite(len) || len <= 0 || (len + 2) * 2 >= body.length) return body;
+  return body.slice(0, body.length - (len + 2) * 2);
+};
+const maskImmutables = (body, refs) => {
+  const chars = [...body];
+  for (const spans of Object.values(refs || {})) {
+    for (const { start, length } of spans) {
+      for (let i = start * 2; i < (start + length) * 2 && i < chars.length; i++) chars[i] = "0";
+    }
+  }
+  return chars.join("");
+};
+
 let compatible = null;
+let metadataDiffers = false;
 try {
-  const onchain = await publicClient().getCode({ address: SHANNON.vault });
+  const onchain = (await publicClient().getCode({ address: SHANNON.vault })).replace(/^0x/, "");
   const artifact = JSON.parse(
     readFileSync(new URL("../../../out/SequenceVault.sol/SequenceVault.json", import.meta.url), "utf8"),
   );
-  compatible = onchain.slice(-120) === artifact.deployedBytecode.object.slice(-120);
+  const built = artifact.deployedBytecode.object.replace(/^0x/, "");
+  const refs = artifact.deployedBytecode.immutableReferences;
+  compatible = stripMetadata(maskImmutables(onchain, refs)) === stripMetadata(maskImmutables(built, refs));
+  metadataDiffers = onchain.slice(-120) !== built.slice(-120);
 } catch { compatible = null; }
 
 if (compatible === false) {
@@ -57,7 +88,10 @@ if (compatible === false) {
   process.exit(1);
 }
 compatible === true
-  ? ok("deployed vault matches this build", "bytecode identical to the compiled artifact")
+  ? ok("deployed vault matches this build",
+      metadataDiffers
+        ? "executable code identical to this build once immutables are masked; only the source-metadata hash differs, which a comment edit changes and a redeploy would not meaningfully fix"
+        : "bytecode identical to the compiled artifact")
   : ok("deployed vault matches this build", "could not read the deployed code; unverified this run");
 
 const step = strategy.steps[0];
