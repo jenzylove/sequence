@@ -66,7 +66,6 @@ contract SequenceSubscriptionManager {
     error NotOperator();
     error NotVaultOwner(address vault, address caller);
     error NotFactoryVault(address vault, address caller);
-    error AlreadyRegistered(address vault, bytes32 marketId);
     error NotRegistered(address vault, bytes32 marketId);
     error UnknownStep(address vault, bytes32 marketId);
     error InvalidStepState(bytes32 stepId, uint8 status);
@@ -100,13 +99,28 @@ contract SequenceSubscriptionManager {
         internal view returns (uint8 status, bytes32 triggerMarketId, bytes32 nextStepId)
     {
         (
-            status,
-            triggerMarketId,
-            ,,,,,,,,
-            ,
-            nextStepId,
-            ,
+            uint8 status_,
+            bytes32 triggerMarketId_,
+            address pool_,
+            uint256 price_,
+            uint256 quantity_,
+            uint64 expireNs_,
+            uint8 orderType_,
+            uint8 actionOnWin0_,
+            uint8 actionOnWin1_,
+            uint256 notionalCap_,
+            bytes32 successorMarketId_,
+            bytes32 nextStepId_,
+            uint128 orderId_,
+            uint8 winningOutcome_
         ) = ISequenceVaultView(vault).steps(stepId);
+
+        // Only these three fields define the subscription chain. The remaining
+        // values are intentionally read from the canonical vault getter rather
+        // than accepted from the caller, then ignored here.
+        pool_; price_; quantity_; expireNs_; orderType_; actionOnWin0_;
+        actionOnWin1_; notionalCap_; successorMarketId_; orderId_; winningOutcome_;
+        return (status_, triggerMarketId_, nextStepId_);
     }
 
     /// Return the exact markets this activation is allowed to spend shared
