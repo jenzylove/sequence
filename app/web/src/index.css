@@ -280,3 +280,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .network-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: 14px; padding: 12px 22px; background: #fdf3ec; border-bottom: 1px solid #f0dcc6;
   font-size: 11px; line-height: 1.6; color: #8a6a34; }
+
+/* The market a rule is about, shown before the rule. */
+.market-panel { border: 1px solid #ece9ef; border-radius: 4px; background: #fff; padding: 20px 22px; }

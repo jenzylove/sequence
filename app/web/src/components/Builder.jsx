@@ -4,7 +4,7 @@ import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, purgeLegacyStrategy,
   validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor, isCadenceSubstitution,
 } from "../strategy.js";
-import { armStep, queueStep, ensurePoolAllowances, publicClient } from "../chain/vault.js";
+import { armStep, queueStep, ensurePoolAllowances, publicClient, registerAutomation } from "../chain/vault.js";
 import { vaultAbi } from "../chain/abi.js";
 import { checkGas } from "../chain/preflight.js";
 import { readableError } from "../hooks/useTx.js";
@@ -17,6 +17,7 @@ import { upsertDraft, newDraftId, latestDraft } from "../lib/store.js";
 import ScreenHeader from "./ScreenHeader.jsx";
 import ActivateDialog from "./ActivateDialog.jsx";
 import CommandBar from "./CommandBar.jsx";
+import MarketPanel from "./MarketPanel.jsx";
 import {
   marketName, marketQuestion, branchActions, describePlan,
   countdown, settlePhrase, marketShortAsk, asOdds, ORDER_TYPE_COPY,
@@ -299,6 +300,26 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         });
         done.push(result.hash);
       }
+      // Switch on automatic execution for the market this sequence watches.
+      // Sequence's manager owns the subscription and pays the stake, so this
+      // costs the trader nothing but the signature.
+      setProgress({ label: "Turning on automatic execution", at: total, of: total });
+      try {
+        await registerAutomation({
+          provider: wallet.provider, account: wallet.account,
+          vault: vault.address, marketId: strategy.steps[0].triggerMarketId,
+        });
+      } catch (cause) {
+        // Delivery is an enhancement on top of a sequence that is already armed
+        // and already correct. Losing it must not read as a failed activation.
+        setArmResult({
+          ok: true, hash: done[0], count: strategy.steps.length,
+          automationWarning: "Your sequence is live. Automatic delivery could not be switched on just now — it will still run when the result is checked, and you can retry automation from the dashboard.",
+        });
+        onActivated?.(strategy);
+        return;
+      }
+
       setArmResult({ ok: true, hash: done[0], count: strategy.steps.length });
       onActivated?.(strategy);
     } catch (cause) {
@@ -383,6 +404,15 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
 
           <div className="grid lg:grid-cols-[1fr_320px]">
             <div className="space-y-9 p-6 lg:p-9">
+              {/* The market itself, before the rule about it. Live book, live
+                  candles, live clock — all DreamDEX data. */}
+              <MarketPanel
+                market={trigger}
+                successor={successor}
+                book={book}
+                spot={markets.spot}
+              />
+
               <Question n={1} title="What are you watching?">
                 <select
                   className="product-input"

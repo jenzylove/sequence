@@ -247,6 +247,9 @@ const connectViaBuild = async (page, { expect = "#build" } = {}) => {
   await page.getByRole("button", { name: "Build", exact: true }).click();
   await page.waitForSelector("#build", { timeout: 20000 });
   // Wait for live markets to land rather than guessing at a delay.
+  // Quick Start is secondary now — the market and its controls come first, and
+  // the sentence box is folded away until asked for.
+  await page.getByRole("button", { name: /describe it in a sentence/i }).first().click();
   await page.getByLabel("Describe the sequence you want").waitFor({ timeout: 45000 });
   await page.getByLabel("Market to watch").waitFor({ timeout: 45000 });
   check("build says where the user is and how to leave",
@@ -362,12 +365,14 @@ const connectViaBuild = async (page, { expect = "#build" } = {}) => {
     const fundsInApp = /Move funds into your account/i.test(details)
       && /your wallet/i.test(details) && /sequence account/i.test(details);
     const noSetupCards = !/Put trading funds in/.test(details) && !/Set your account up/.test(details);
-    // The manual alternative is only worth stating while automation is off; for
-    // an account that already has it, saying so is the honest line.
-    const automationHonest = /Automation/.test(details)
-      && (/Check result/.test(details) || /reach your account automatically/i.test(details));
-    check("funding is in-app and the staked step is a setting, not onboarding",
-      fundsInApp && noSetupCards && automationHonest);
+    // Automatic execution is included now: Sequence owns the subscriptions and
+    // holds the stake, so the trader is never asked for 32 STT. Check result is
+    // still named, but as recovery rather than as the normal path.
+    const automationIncluded = /Automatic execution/i.test(details)
+      && /Included/i.test(details)
+      && !/Stake 32/i.test(details);
+    check("funding is in-app and automatic execution is included, not sold as setup",
+      fundsInApp && noSetupCards && automationIncluded);
   }
 
   await page.screenshot({ path: join(shots, "e2e-details.png"), fullPage: true });
@@ -398,6 +403,9 @@ const connectViaBuild = async (page, { expect = "#build" } = {}) => {
   // The creation flow must be reachable and usable on a phone too.
   await page.getByRole("button", { name: "Build", exact: true }).last().click();
   await page.waitForSelector("#build", { timeout: 30000 });
+  // Quick Start is secondary now — the market and its controls come first, and
+  // the sentence box is folded away until asked for.
+  await page.getByRole("button", { name: /describe it in a sentence/i }).first().click();
   await page.getByLabel("Describe the sequence you want").waitFor({ timeout: 45000 });
   overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check("build has no horizontal overflow on mobile", overflow <= 1, `${overflow}px`);

@@ -10,6 +10,7 @@
 // what will be encoded on chain.
 import { makeStep, emptyStrategy, notionalOf, ACTION } from "../strategy.js";
 import { marketHeadline, money } from "./language.js";
+import { sizeOrder, DEFAULT_POOL_PARAMS } from "../chain/markets.js";
 
 const ASSETS = [
   { key: "BTC", match: /\b(btc|bitcoin)\b/i },
@@ -133,10 +134,18 @@ export function parseCommand(text, { open = [], bankroll = 200000000n, accountLi
     const successorMarket = pool[i + 1];
     const step = makeStep(i + 1, { triggerMarket, successorMarket });
     const reference = successorMarket.lastPrice && successorMarket.lastPrice > 0n ? successorMarket.lastPrice : 500000n;
-    // Size the order so its value lands inside the per-trade cap.
-    const quantity = reference > 0n ? perStepCap / reference : 1n;
-    step.price = reference;
-    step.quantity = quantity > 0n ? quantity : 1n;
+    // Size through the same path the manual builder uses.
+    //
+    // This used to divide the cap by the price directly, which drops the 1e6
+    // price scale: a $2 trade came out as 4 base units, previewing as $0.00.
+    // Quantities are 6dp and cost is price * quantity / 1e6, so the budget has
+    // to be scaled before the division — which is exactly what sizeOrder does,
+    // along with tick and lot rounding. The pool's real parameters are read when
+    // the book loads and the step is resized then; these defaults are the
+    // published values and keep the preview honest until it does.
+    const sized = sizeOrder({ price: reference, budget: perStepCap, ...DEFAULT_POOL_PARAMS });
+    step.price = sized ? sized.price : reference;
+    step.quantity = sized ? sized.quantity : 0n;
     step.notionalCap = perStepCap;
     step.actionOnWin0 = actionOnWin0;
     step.actionOnWin1 = actionOnWin1;
@@ -144,9 +153,11 @@ export function parseCommand(text, { open = [], bankroll = 200000000n, accountLi
     strategy.steps.push(step);
   }
 
-  // If rounding pushed a step over its cap, pull the size back by one lot.
+  // sizeOrder already rounds down to a lot inside the budget, so nothing should
+  // exceed its cap; this stays as a belt-and-braces pass on the lot grid.
+  const lot = DEFAULT_POOL_PARAMS.lotSize;
   for (const step of strategy.steps) {
-    while (step.quantity > 1n && notionalOf(step) > step.notionalCap) step.quantity -= 1n;
+    while (step.quantity > lot && notionalOf(step) > step.notionalCap) step.quantity -= lot;
   }
 
   const overCap = strategy.steps.reduce((sum, s) => sum + notionalOf(s), 0n);

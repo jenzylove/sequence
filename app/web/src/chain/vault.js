@@ -75,6 +75,17 @@ const erc20TransferAbi = [
     inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
 ];
 
+// The slice of the subscription manager the app needs.
+const managerAbi = [
+  { type: "function", stateMutability: "nonpayable", name: "register",
+    inputs: [{ name: "vault", type: "address" }, { name: "marketId", type: "bytes32" }],
+    outputs: [{ type: "uint256" }] },
+  { type: "function", stateMutability: "view", name: "isRegistered",
+    inputs: [{ name: "vault", type: "address" }, { name: "marketId", type: "bytes32" }],
+    outputs: [{ type: "bool" }] },
+  { type: "function", stateMutability: "view", name: "liveSubscriptions", inputs: [], outputs: [{ type: "uint256" }] },
+];
+
 const LOG_CHUNK = 1000n;
 const MAX_CHUNKS = 40;
 
@@ -219,6 +230,88 @@ export async function readWalletCollateral(account, collateral = SHANNON.testUsd
   return publicClient().readContract({
     address: collateral, abi: erc20TransferAbi, functionName: "balanceOf", args: [account],
   }).catch(() => 0n);
+}
+
+// Find a wallet's live sequences from the chain, not from this browser.
+//
+// Sequences used to exist only in localStorage: clear it, or open the app on
+// another machine, and an armed sequence that was still running on chain simply
+// vanished from the interface. The vault knows perfectly well what it is armed
+// on — `stepForMarket` maps a trigger market to its step — so the recovery is to
+// ask it.
+//
+// Two cheap sources, unioned: the vault's recent log window, and `stepForMarket`
+// asked about the markets the app already lists.
+//
+// The limit is worth stating rather than hiding. This RPC caps `getLogs` at
+// about a thousand blocks and Somnia produces them sub-second, and there is no
+// Multicall3 deployed here, so neither "walk all history" nor "ask about every
+// market ever" is affordable on a page load. A sequence armed long enough ago
+// that it has fallen out of the log window *and* whose market has aged out of
+// the listed set will not be found by this. Everything recent — which is what
+// "still running" means in practice — is.
+export async function discoverSteps(vault, marketIds) {
+  if (!vault || !marketIds?.length) return [];
+  const client = publicClient();
+  const found = [];
+  const seen = new Set();
+
+  // Second source: the vault's own recent log window. A trigger market that has
+  // already rolled out of the market list would otherwise take its sequence with
+  // it, which is exactly the disappearing-history problem this is here to fix.
+  try {
+    const events = await readVaultEvents({ vault });
+    for (const e of events) {
+      const id = e.args?.stepId;
+      if (id && !seen.has(id)) { seen.add(id); found.push({ stepId: id, triggerMarketId: e.args?.triggerMarketId ?? null }); }
+    }
+  } catch { /* the window may be unavailable; the market scan still runs */ }
+
+  await Promise.all(marketIds.map(async (marketId) => {
+    try {
+      const stepId = await client.readContract({
+        address: vault, abi: vaultAbi, functionName: "stepForMarket", args: [marketId],
+      });
+      if (!stepId || /^0x0+$/.test(stepId) || seen.has(stepId)) return;
+      seen.add(stepId);
+      found.push({ stepId, triggerMarketId: marketId });
+    } catch { /* a market the vault has never seen */ }
+  }));
+  return found;
+}
+
+// Ask Sequence's subscription manager to wake this vault when a market settles.
+//
+// The manager owns the subscription and holds the stake; the handler is the
+// user's own vault. That separation is what lets automatic execution be the
+// default instead of something only a wallet holding 32 STT can afford.
+export async function registerAutomation({ provider, account, vault, marketId, onHash }) {
+  const client = publicClient();
+  const already = await client.readContract({
+    address: SHANNON.subscriptionManager, abi: managerAbi, functionName: "isRegistered", args: [vault, marketId],
+  }).catch(() => false);
+  if (already) return { skipped: true };
+
+  const { request } = await client.simulateContract({
+    address: SHANNON.subscriptionManager, abi: managerAbi, functionName: "register",
+    args: [vault, marketId], account,
+  });
+  const hash = await walletClientFor(provider, account).writeContract(request);
+  onHash?.(hash);
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Could not switch on automatic execution for this market.");
+  return { hash, receipt };
+}
+
+export async function isAutomated(vault, marketId) {
+  if (!vault || !marketId) return false;
+  return publicClient().readContract({
+    address: SHANNON.subscriptionManager, abi: managerAbi, functionName: "isRegistered", args: [vault, marketId],
+  }).catch(() => false);
+}
+
+export async function readManagerStake() {
+  return publicClient().getBalance({ address: SHANNON.subscriptionManager }).catch(() => 0n);
 }
 
 export async function readNativeBalance(address) {

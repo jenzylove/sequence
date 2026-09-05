@@ -215,6 +215,35 @@ export const orderCost = (price, quantity) => (price * quantity) / PRICE_SCALE;
 // Largest order that respects the pool's rules and still costs no more than the
 // budget. Returns null when even one lot is too expensive, because sizing down
 // past the minimum is not an order the pool will take.
+// Real traded history for one market, from the DreamDEX indexer.
+//
+// These are the market's own candles: open/high/low/close of the YES price, in
+// the same 6dp units as everything else, plus the volume behind each bucket.
+// Nothing here is synthesised — if a market has not traded, this returns nothing
+// and the interface says so rather than drawing a line.
+export async function fetchCandles(marketId, limit = 60) {
+  if (!marketId) return [];
+  const rows = await gql(
+    `query($m: String!, $limit: Int!) {
+      Candle(where: { market_id: { _eq: $m } }, order_by: { bucketStart: asc }, limit: $limit) {
+        bucketStart openPrice high low closePrice baseVolume tradeCount intervalSeconds
+      }
+    }`,
+    { m: marketId, limit },
+  ).then((d) => d?.Candle ?? []).catch(() => []);
+
+  return rows.map((c) => ({
+    at: Number(c.bucketStart),
+    open: BigInt(c.openPrice ?? 0),
+    high: BigInt(c.high ?? 0),
+    low: BigInt(c.low ?? 0),
+    close: BigInt(c.closePrice ?? 0),
+    volume: BigInt(c.baseVolume ?? 0),
+    trades: Number(c.tradeCount ?? 0),
+    intervalSeconds: Number(c.intervalSeconds ?? 0),
+  })).filter((c) => c.close > 0n);
+}
+
 export function sizeOrder({ price, budget, tickSize, minQuantity, lotSize }) {
   const tick = tickSize > 0n ? tickSize : 1n;
   const lot = lotSize > 0n ? lotSize : 1n;

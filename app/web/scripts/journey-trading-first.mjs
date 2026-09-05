@@ -139,16 +139,20 @@ const body = async (page) => (await page.locator("body").innerText()).replace(/\
     noDeadFaucet ? "faucet help is not shown to a funded wallet" : "still offering a faucet to a funded wallet",
     await shoot(page, "07-no-faucet-prompt"));
 
-  const auto = page.getByRole("button", { name: /Automation/ });
-  let autoOk = false; let autoNote = "no automation setting found";
+  // The stake is gone from the trader's path entirely: Sequence owns the
+  // subscriptions and pays for delivery, so automatic is included by default.
+  const auto = page.getByRole("button", { name: /Automatic execution/i });
+  let autoOk = false; let autoNote = "no automation section found";
   if (await auto.count()) {
     await auto.first().click();
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(1500);
     const a = await body(page);
-    autoOk = /32\.00 STT/.test(a) && /Check result/.test(a);
-    autoNote = autoOk ? "stake is a collapsed setting and states the manual alternative honestly" : a.slice(0, 120);
+    autoOk = /You stake/i.test(a) && /Nothing/i.test(a) && !/Stake 32/i.test(a);
+    autoNote = autoOk
+      ? "automatic execution is included; the trader stakes nothing and is never shown a 32 STT card"
+      : a.slice(0, 140);
   }
-  stage("The 32 STT stake is an optional setting, not onboarding", autoOk, autoNote,
+  stage("The trader is never asked to stake 32 STT", autoOk, autoNote,
     await shoot(page, "08-automation"));
 
   await ctx.close();

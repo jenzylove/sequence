@@ -1,0 +1,31 @@
+{
+  "question": "Does a sequence survive a cleared browser, or another device?",
+  "method": "A brand-new browser profile with empty localStorage connects the wallet and reads the vault's own state from chain.",
+  "results": [
+    {
+      "wallet": "trading-first trader",
+      "address": "0x971F42260875B9576bb2f6280512FA59110018D9",
+      "storageKeysAtStart": 0,
+      "recovered": false,
+      "tab": null,
+      "shot": "recovery-trading-first-trader.png"
+    },
+    {
+      "wallet": "shared-Reactivity user A",
+      "address": "0xe64c4a2Ba906fCB4319615A34870F9e13ad89A67",
+      "storageKeysAtStart": 0,
+      "recovered": true,
+      "tab": "Finished",
+      "shot": "recovery-shared-reactivity-user-a.png"
+    },
+    {
+      "wallet": "shared-Reactivity user B",
+      "address": "0xEBB1F6Fe194A20Fe0c875E79d70C56c2411c3AeF",
+      "storageKeysAtStart": 0,
+      "recovered": true,
+      "tab": "Finished",
+      "shot": "recovery-shared-reactivity-user-b.png"
+    }
+  ],
+  "checkedAt": "2026-09-05T20:23:57.507Z"
+}

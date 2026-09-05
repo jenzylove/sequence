@@ -41,16 +41,31 @@ export default function CommandBar({ markets, vault, onUse }) {
   };
 
   const strategy = result?.ok ? result.strategy : null;
+  const [open, setOpen] = useState(false);
   const errors = strategy ? validate(strategy) : [];
   const planned = strategy ? strategy.steps.reduce((sum, s) => sum + notionalOf(s), 0n) : 0n;
+
+  // A shortcut, not the product. It used to sit above the builder as the biggest
+  // thing on the screen, which made a text box the primary way to trade. The
+  // market and its controls come first now; this is folded away until asked for.
+  if (!open) {
+    return (
+      <div className="mt-8 text-right">
+        <button onClick={() => setOpen(true)} className="text-[11px] font-semibold text-[#6f58c2] hover:text-[#4f3d97]">
+          Or describe it in a sentence →
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="command-card mt-8">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <div className="micro-label">Quick start</div>
-          <h3 className="mt-2 text-[18px] font-extrabold tracking-[-.04em] text-[#151318]">Describe it, or set it up by hand below</h3>
+          <h3 className="mt-2 text-[18px] font-extrabold tracking-[-.04em] text-[#151318]">Describe it in a sentence</h3>
         </div>
+        <button onClick={() => setOpen(false)} className="text-[10px] font-semibold text-[#a8a2ad] hover:text-[#28252c]">Close</button>
       </div>
 
       <form

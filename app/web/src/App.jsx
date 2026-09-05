@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Nav from "./components/Nav.jsx";
 import Hero from "./components/Hero.jsx";
 import HowItWorks from "./components/HowItWorks.jsx";
@@ -36,7 +36,14 @@ export default function App() {
 
   const wallet = useWallet();
   const markets = useMarkets();
-  const vault = useVault(wallet.account);
+  // Sequences are recovered from chain by asking the vault which of these
+  // markets it is armed on, so a cleared browser or another device still shows
+  // what is actually running.
+  const marketIds = useMemo(
+    () => [...markets.open, ...(markets.resolved || [])].map((m) => m.marketId).filter(Boolean),
+    [markets.open, markets.resolved],
+  );
+  const vault = useVault(wallet.account, { marketIds });
   const connected = wallet.connected;
 
   const show = (next) => {

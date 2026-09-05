@@ -182,15 +182,16 @@ add("8", "execution", rechecks ? "OK" : "PARTIAL",
     : "market tradability comes from the indexer, which can lag, and is not rechecked onchain",
   rechecks ? null : "verify the successor is still tradable before arming");
 
-// Funding asks for what this sequence actually needs, not a round number: the
-// shortfall against the strategy's own risk limit, in the automation stake and
-// in the collateral transfer alike.
+// Funding asks for what this sequence actually needs — the shortfall against
+// the strategy's own risk limit — and the trader is never asked to stake for
+// Reactivity, because Sequence owns the subscriptions and pays for delivery.
 const automation = src("app/web/src/components/Automation.jsx");
-const topUp = /shortfall/.test(automation) && /short > 0n/.test(funding);
-add("12", "setup", topUp ? "OK" : "BLOCKED",
-  topUp
-    ? "funding asks for the shortfall this sequence needs, and the stake tops up rather than resending a full 32 STT"
-    : "setup asks for a fixed amount instead of the shortfall");
+const asksShortfall = /short > 0n/.test(funding);
+const noUserStake = !/Stake \$\{|Stake 32/.test(automation) && /You stake/.test(automation);
+add("12", "setup", asksShortfall && noUserStake ? "OK" : "BLOCKED",
+  asksShortfall && noUserStake
+    ? "funding asks for the shortfall this sequence needs, and automatic execution is paid for by Sequence rather than staked by the trader"
+    : `setup still asks the trader for a fixed amount (shortfall ${asksShortfall}, no user stake ${noUserStake})`);
 
 const factoryAddr = /factory:\s*"(0x[0-9a-fA-F]{40})"/.exec(src("app/web/src/chain/config.js"))?.[1];
 add("1b", "multi-user", factoryAddr ? "OK" : "BLOCKED",

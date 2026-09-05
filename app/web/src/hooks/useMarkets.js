@@ -13,7 +13,7 @@ export function useMarkets({ refreshMs = 30000 } = {}) {
   const load = useCallback(async () => {
     try {
       const [nextOpen, nextResolved, nextSpot] = await Promise.all([
-        fetchOpenMarkets(40), fetchResolvedMarkets(25), fetchSpotContext(),
+        fetchOpenMarkets(40), fetchResolvedMarkets(60), fetchSpotContext(),
       ]);
       setOpen(nextOpen);
       setResolved(nextResolved);

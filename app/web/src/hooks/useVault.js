@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { readVaultState, readStep, readVaultEvents, vaultForAccount } from "../chain/vault.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { readVaultState, readStep, readVaultEvents, vaultForAccount, discoverSteps } from "../chain/vault.js";
 
 // Local records are scoped to the wallet they belong to. Sharing one key across
 // accounts leaked one user's sequence metadata into another's session when the
@@ -23,7 +23,11 @@ export function clearWatched(account) {
 // There is no shared vault any more. A wallet that has never provisioned one
 // gets `needsVault`, which the interface turns into an invitation rather than a
 // dead end reading somebody else's balances.
-export function useVault(account, { refreshMs = 12000 } = {}) {
+export function useVault(account, { refreshMs = 12000, marketIds = [] } = {}) {
+  // The markets currently worth asking the vault about. Held in a ref so a new
+  // market list does not rebuild the refresh callback on every poll.
+  const marketIdsRef = useRef(marketIds);
+  marketIdsRef.current = marketIds;
   const [address, setAddress] = useState(null);
   const [resolving, setResolving] = useState(true);
   const [state, setState] = useState(null);
@@ -55,8 +59,20 @@ export function useVault(account, { refreshMs = 12000 } = {}) {
       setState(vaultState);
       const list = loadWatched(account);
       setWatched(list);
-      const onchain = await Promise.all(list.map(async (w) => ({ ...w, ...(await readStep(w.stepId, address)) })));
-      setSteps(onchain);
+
+      // Chain state is the source of truth for what is live. Local storage only
+      // adds friendly names to what the vault already says it is armed on, so a
+      // cleared browser or a second device recovers the sequence rather than
+      // losing it.
+      const discovered = await discoverSteps(address, marketIdsRef.current).catch(() => []);
+      const byId = new Map();
+      for (const d of discovered) byId.set(d.stepId, d);
+      for (const w of list) byId.set(w.stepId, { ...(byId.get(w.stepId) || {}), ...w });
+
+      const onchain = await Promise.all(
+        [...byId.values()].map(async (w) => ({ ...w, ...(await readStep(w.stepId, address)) })),
+      );
+      setSteps(onchain.filter((s) => s.exists));
       const blocks = list.map((w) => (w.blockNumber ? BigInt(w.blockNumber) : null)).filter(Boolean);
       const fromBlock = blocks.length ? blocks.reduce((a, b) => (a < b ? a : b)) : null;
       setEvents(await readVaultEvents({ fromBlock, vault: address }));

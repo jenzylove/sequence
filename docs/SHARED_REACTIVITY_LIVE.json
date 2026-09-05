@@ -1,0 +1,123 @@
+{
+  "question": "Do two unrelated users, neither staking, both get automatic execution from one shared Reactivity stake?",
+  "answer": "Yes. Two wallets, two vaults, two rules, one subscription owner paying for delivery. Both advanced without any manual step.",
+  "manager": "0x14978582d694ee15e8228f012a7d5ee64972c0f7",
+  "managerStake": "34975462088000000000",
+  "users": [
+    {
+      "label": "A",
+      "wallet": "0xe64c4a2Ba906fCB4319615A34870F9e13ad89A67",
+      "vault": "0xDFcDAd463564Ce2cb507Ea95C494222715D5539d",
+      "trigger": {
+        "marketId": "0x00000000000000000000000000000000000000000000000000000000000146a5",
+        "name": "ETH 1h"
+      },
+      "successor": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc3",
+        "name": "ETH 1d"
+      },
+      "subscriptionId": "16279817",
+      "armTx": "0xe11cbcf3f08f695091688eb905e70a2a043dc735c2ad246f5863e3a0caf4c54e",
+      "registerTx": "0xdd2edf6f1f9793eb927d8e7380d5f09218b61a1f700ebc32f98bd8b9b4aead87",
+      "finalStatus": "PLACED",
+      "advancedAutomatically": true,
+      "usedSyncResolution": false,
+      "timeline": [
+        {
+          "event": "StepArmed",
+          "txHash": "0xe11cbcf3f08f695091688eb905e70a2a043dc735c2ad246f5863e3a0caf4c54e",
+          "blockNumber": "480649204"
+        },
+        {
+          "event": "Triggered",
+          "txHash": "0x65a01756cb589cab1878dab727c6332718b25cbdf70db1c214a0f868c7b2e9f5",
+          "blockNumber": "480652632"
+        },
+        {
+          "event": "Placed",
+          "txHash": "0x65a01756cb589cab1878dab727c6332718b25cbdf70db1c214a0f868c7b2e9f5",
+          "blockNumber": "480652632"
+        }
+      ]
+    },
+    {
+      "label": "B",
+      "wallet": "0xEBB1F6Fe194A20Fe0c875E79d70C56c2411c3AeF",
+      "vault": "0x5513a0e04AcB45dd75a70EcbD7e098d358bbA1b8",
+      "trigger": {
+        "marketId": "0x00000000000000000000000000000000000000000000000000000000000144ed",
+        "name": "ETH 4h"
+      },
+      "successor": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc3",
+        "name": "ETH 1d"
+      },
+      "subscriptionId": "16279846",
+      "armTx": "0x5598e1d4aae468e9d9b69a452dc2ffe53f75e9520b7c5a82835bbb6102b0177b",
+      "registerTx": "0x649ae9da39e7aafa7bb1bd3f91e3479a171175bced3b70e34f5f5e9e911d22dc",
+      "finalStatus": "PLACED",
+      "advancedAutomatically": true,
+      "usedSyncResolution": false,
+      "timeline": [
+        {
+          "event": "StepArmed",
+          "txHash": "0x5598e1d4aae468e9d9b69a452dc2ffe53f75e9520b7c5a82835bbb6102b0177b",
+          "blockNumber": "480649381"
+        },
+        {
+          "event": "Triggered",
+          "txHash": "0xd55861af15ea5fabb9715ed257a45772b36b9f9585770829209c730f759866ff",
+          "blockNumber": "480652632"
+        },
+        {
+          "event": "Placed",
+          "txHash": "0xd55861af15ea5fabb9715ed257a45772b36b9f9585770829209c730f759866ff",
+          "blockNumber": "480652632"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "check": "user A's sequence advanced with no manual step",
+      "pass": true,
+      "detail": "StepArmed → Triggered → Placed [PLACED]"
+    },
+    {
+      "check": "user A never called syncResolution",
+      "pass": true,
+      "detail": "no ResolutionSynced"
+    },
+    {
+      "check": "user A never held a 32 STT stake",
+      "pass": true,
+      "detail": "1.72 STT"
+    },
+    {
+      "check": "user B's sequence advanced with no manual step",
+      "pass": true,
+      "detail": "StepArmed → Triggered → Placed [PLACED]"
+    },
+    {
+      "check": "user B never called syncResolution",
+      "pass": true,
+      "detail": "no ResolutionSynced"
+    },
+    {
+      "check": "user B never held a 32 STT stake",
+      "pass": true,
+      "detail": "1.72 STT"
+    },
+    {
+      "check": "one shared stake covered both users",
+      "pass": true,
+      "detail": "34.98 STT"
+    },
+    {
+      "check": "the two vaults are genuinely different accounts",
+      "pass": true,
+      "detail": "0xDFcDAd463564Ce2cb507Ea95C494222715D5539d / 0x5513a0e04AcB45dd75a70EcbD7e098d358bbA1b8"
+    }
+  ],
+  "provenAt": "2026-09-05T20:00:10.406Z"
+}

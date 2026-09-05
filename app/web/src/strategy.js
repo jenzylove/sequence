@@ -129,9 +129,6 @@ export const notionalOf = (step) => (step.price * step.quantity) / PRICE_SCALE;
 // Same checks the vault applies, run before the user is ever asked to sign.
 export function validate(strategy) {
   const errors = [];
-  if (strategy.maxOutstanding > strategy.bankroll) {
-    errors.push({ scope: "vault", message: "Outstanding cap is above the bankroll funded to the vault." });
-  }
   if (strategy.maxOutstanding <= 0n) {
     errors.push({ scope: "vault", message: "Outstanding cap must be above zero." });
   }
@@ -176,6 +173,12 @@ export function notices(strategy) {
   }
   if (strategy.maxOutstanding > 0n && planned === 0n) {
     out.push("No trade is sized yet. Set an amount per trade.");
+  }
+  // An unfunded account is a thing to say, not a thing to stop on. Funding is
+  // asked for at activation, so blocking the builder on it only prevented people
+  // from designing a sequence before they had paid for anything.
+  if (strategy.maxOutstanding > (strategy.bankroll ?? 0n)) {
+    out.push(`This risks up to ${money(strategy.maxOutstanding)} and your account holds ${money(strategy.bankroll ?? 0n)}. You will be asked to fund it when you activate.`);
   }
   return out;
 }

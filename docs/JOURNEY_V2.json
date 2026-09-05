@@ -1,5 +1,5 @@
 {
-  "walkedAt": "2026-09-05T12:49:53.387Z",
+  "walkedAt": "2026-09-05T20:33:59.156Z",
   "noAccountWallet": "0xa2C83CE573394ae170b5A9a341F77D092Fc74c37",
   "activatedWallet": "0x971F42260875B9576bb2f6280512FA59110018D9",
   "results": [
@@ -46,13 +46,11 @@
       "shot": "07-no-faucet-prompt.png"
     },
     {
-      "stage": "The 32 STT stake is an optional setting, not onboarding",
+      "stage": "The trader is never asked to stake 32 STT",
       "pass": true,
-      "note": "stake is a collapsed setting and states the manual alternative honestly",
+      "note": "automatic execution is included; the trader stakes nothing and is never shown a 32 STT card",
       "shot": "08-automation.png"
     }
   ],
-  "pageErrors": [
-    "Failed to load resource: net::ERR_CONNECTION_CLOSED"
-  ]
+  "pageErrors": []
 }
