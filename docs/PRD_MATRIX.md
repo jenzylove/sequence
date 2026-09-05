@@ -13,7 +13,7 @@ vault `0x0185CA254C9e7b184b566e7037160334519cC9f6`, Shannon testnet (50312).
 
 | Requirement | Implementation | Proof | Verdict | Gap |
 | --- | --- | --- | --- | --- |
-| **Automatic Reactivity delivery.** A settlement invokes the vault with no human in the loop. | `SequenceVault.onEvent` (selector `0x53edf33d`). Two live subscriptions: vault-owned `16077958`, and EOA-owned `16154782` with `isGuaranteed: true` created through the precompile's raw `subscribe`, which is the only entry that exposes the flag. | Both subscriptions read back correct on every field (11/11 checks). No validated matching `AnswerDelivered` has yet been captured while a subscription was live, so dispatch has not been measured either way. `docs/REACTIVITY_EXPERIMENT.json`, status `INCONCLUSIVE`. | **UNRESOLVED** | An earlier **FAIL (external)** verdict here has been withdrawn: it rested on a log that was a `DrainContinuation`, not an `AnswerDelivered`, because the harness used a topic filter viem silently ignores. Nothing is claimed until a validated event is captured and the block's full call trace is inspected. Mitigated meanwhile by permissionless recovery, below. |
+| **Automatic Reactivity delivery.** A settlement invokes the vault with no human in the loop. | `SequenceVault.onEvent` (selector `0x53edf33d`). Two live subscriptions: vault-owned `16077958` (`isGuaranteed: false`) and EOA-owned `16154782` (`isGuaranteed: true`). | Block `480220742` carried 4 validated `AnswerDelivered` events; the precompile made 8 `onEvent` calls to the vault, depth 0, none reverting. One market was our armed trigger, and the step went `StepArmed -> Triggered -> Placed` with **no `ResolutionSynced`**. `docs/REACTIVITY_EXPERIMENT.json` verdict `REACTIVITY_DELIVERS`. | **PASS** | None. A prior **FAIL (external)** verdict is withdrawn: it rested on a `DrainContinuation` log matched by a filter viem silently ignored. The `isGuaranteed` hypothesis is withdrawn too — 4 events produced 8 dispatches, so both subscriptions delivered. |
 | **Permissionless recovery.** A stalled sequence must be recoverable by anyone, without privileged access. | `syncResolution(bytes32 marketId)` — reads `isVoided`/`isResolved`/`payoutNumerators` from the market contract and runs the identical state machine behind the same idempotency key. | On chain: `ResolutionSynced -> Triggered -> Placed` (`0x07adeb99…`). 18 tests in `SequenceSync.t.sol` covering replay, late delivery, pause, cap, void and stop. | **PASS** | None. This is why the Reactivity row is survivable rather than fatal. |
 | **Successor trade.** The outcome of one market decides which side of the next market is bought. | `_applyResolution` reads the winning outcome from chain and dispatches `actionOnWin0` / `actionOnWin1` into `placeBinaryOrder`. | Order id `110680464442257315396` placed into BTC 1h off a BTC 5m settlement. `docs/LIVE_FIRE.json` run 2. | **PASS** | None. |
 | **Per-outcome stop.** Either side can independently be Buy YES, Buy NO, or Stop. | `ACT_STOP = 255` honoured on both branches. | `test_stop_on_win0_places_nothing`, `test_stop_on_win1_places_nothing`, `test_stop_still_consumes_the_resolution`, `test_sync_honours_a_stop_branch`. | **PASS** | None. |
@@ -44,20 +44,21 @@ vault `0x0185CA254C9e7b184b566e7037160334519cC9f6`, Shannon testnet (50312).
 
 | Verdict | Count |
 | --- | --- |
-| PASS | 12 |
+| PASS | 13 |
 | PARTIAL | 0 |
-| UNRESOLVED | 1 (Reactivity delivery — measurement pending) |
+| UNRESOLVED | 0 |
 | FAIL | 0 |
 
-The single unresolved row is Reactivity delivery. It is not called a failure,
-because the evidence that previously supported that call did not survive review:
-the harness had matched the wrong log entirely. The corrected harness refuses to
-write any verdict without a validated `AnswerDelivered` — emitter, topic0, market
-id and decoding all checked — and establishes dispatch from a full call trace
-rather than from top-level block transactions, since a reactive callback need not
-be one. Until such an event is captured under a live guaranteed subscription, the
-honest state is "not measured", and that is what the product and this matrix say.
+Every row passes, each with a transaction or a test behind it.
 
-Every other requirement passes with a transaction or a test behind it, and the
-permissionless recovery path means an undelivered callback costs a sequence
-nothing but time.
+The row that changed is Reactivity delivery, and how it changed is worth stating
+plainly. It was previously recorded as an external platform failure. That verdict
+did not survive review: the harness that produced it used a log filter viem
+silently ignores, matched an unrelated event, and drew a conclusion from a block
+that never carried an `AnswerDelivered`. The corrected harness refuses to write a
+verdict without a validated event and records the caller and selector of every
+dispatch frame. Measured properly, Reactivity delivers — and the sequence it
+drove needed no human and no manual sync.
+
+`syncResolution` remains in place regardless. Delivery working is not a reason to
+remove the recovery path that makes a missed delivery survivable.

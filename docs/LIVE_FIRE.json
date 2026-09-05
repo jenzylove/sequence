@@ -200,23 +200,18 @@
       "recordedAt": "2026-09-05T07:21:36.517Z"
     },
     {
-      "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
+      "note": "Reconstructed from chain after the watcher lost its connection. Every field is read from the vault's own logs.",
       "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
       "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
       "factory": "0xF492234a4b522D19dd76dBB435ad9471a652f950",
       "subscriptionId": "16077958",
       "stepId": "0xa48d6ec88685711347798d411a3ef1993a0d5dc89ae100c5eb832415953da878",
       "trigger": {
-        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013fc7",
-        "name": "ETH 1h",
-        "expiry": 1788595200,
-        "question": "ETH closes at or above its opening price"
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013fc7"
       },
       "successor": {
         "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc3",
-        "name": "ETH 1d",
-        "pool": "0x9887d318ffd0e385e6d3113ef78b9a664ab4d0cb",
-        "expiry": 1788652800
+        "pool": "0x9887d318fFd0e385E6d3113ef78b9a664AB4d0CB"
       },
       "order": {
         "price": "672000",
@@ -227,9 +222,50 @@
       "armedAt": "2026-09-05T07:55:24.979Z",
       "armedTx": "0x04707f13daa4003ce282b89230fcfa06fa777dd6037b6f4d85125e90c85952f0",
       "armedBlock": "480217967",
-      "timeline": [],
-      "outcome": "waiting",
-      "finalStatus": "NONE"
+      "timeline": [
+        {
+          "event": "StepArmed",
+          "args": {
+            "stepId": "0xa48d6ec88685711347798d411a3ef1993a0d5dc89ae100c5eb832415953da878",
+            "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013fc7",
+            "pool": "0x9887d318fFd0e385E6d3113ef78b9a664AB4d0CB"
+          },
+          "blockNumber": "480217967",
+          "txHash": "0x04707f13daa4003ce282b89230fcfa06fa777dd6037b6f4d85125e90c85952f0",
+          "logIndex": 29
+        },
+        {
+          "event": "Triggered",
+          "args": {
+            "stepId": "0xa48d6ec88685711347798d411a3ef1993a0d5dc89ae100c5eb832415953da878",
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013fc7",
+            "questionId": "50844",
+            "voided": false,
+            "winningOutcome": 0
+          },
+          "blockNumber": "480220742",
+          "txHash": "0xdbff2003deb11bb3784a459819f3472e6a04751cc513e68d97cdf4ffb9a3beb9",
+          "logIndex": 97
+        },
+        {
+          "event": "Placed",
+          "args": {
+            "stepId": "0xa48d6ec88685711347798d411a3ef1993a0d5dc89ae100c5eb832415953da878",
+            "pool": "0x9887d318fFd0e385E6d3113ef78b9a664AB4d0CB",
+            "kind": 0,
+            "orderId": "110680464442257334685",
+            "notional": "1999872"
+          },
+          "blockNumber": "480220742",
+          "txHash": "0xdbff2003deb11bb3784a459819f3472e6a04751cc513e68d97cdf4ffb9a3beb9",
+          "logIndex": 106
+        }
+      ],
+      "outcome": "placed",
+      "finalStatus": "PLACED",
+      "advancedBy": "reactivity",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0x04707f13daa4003ce282b89230fcfa06fa777dd6037b6f4d85125e90c85952f0",
+      "recordedAt": "2026-09-05T08:02:36.597Z"
     }
   ]
 }

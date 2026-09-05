@@ -58,83 +58,74 @@ make progress, and nothing in the API says so.
 
 ---
 
-## 1b. A subscription that never delivered, with the obvious causes ruled out
+## 1b. Reactivity does deliver. Our evidence harness was wrong.
 
-**Observed.** Reproduced on four separate vaults with four separate
-subscriptions. For each armed market we confirmed, in order:
+**Withdrawn.** This section previously reported that a Reactivity subscription
+never delivered, on four vaults, with the obvious causes ruled out. That report
+was wrong and is retracted in full. Reactivity delivers, and it drove a real
+Sequence execution end to end.
 
-1. the market finalized on chain — `isResolved() == true` with a payout vector;
-2. OracleHub emitted `AnswerDelivered` in the resolving block, carrying our
-   `topic0` and our `marketId` as `topic2` (for example tx `0xde5c9be3…fbeb4`,
-   question 50664);
-3. our subscribed contract was never invoked: the step stayed `ARMED`, the
-   `consumed` map was empty, and it emitted nothing.
+**What actually happened.** The harness that produced the original finding
+queried logs like this:
 
-**What we ruled out.** Rather than assume a protocol fault we tested each
-plausible cause:
+```js
+pub.getLogs({ address: ORACLE_HUB, fromBlock, toBlock,
+              topics: [ANSWER_DELIVERED_TOPIC0, null, marketId] });
+```
 
-| Cause | How it was tested | Result |
-| --- | --- | --- |
-| Wrong filter | `getSubscriptionInfo` read back: topic0 `AnswerDelivered`, topics 1-3 wildcard, origin wildcard, emitter OracleHub, handler our vault, selector `0x53edf33d` | correct |
-| Owner balance under the 32 SOM minimum | ran at 31.90 SOM, then topped to 35.40 and armed again | failed at both |
-| Zero priority fee starving the callback | resubscribed with priorityFeePerGas 1 gwei, maxFeePerGas 40 gwei | failed at both |
-| Gas limit too low | 10,000,000, far above what the handler uses | not the cause |
-| Handler reverting | no vault event, no state change, and the same call path succeeds when driven by `syncResolution` | no evidence of a revert |
-| `isGuaranteed: false` dropping the callback | subscribed again with `isGuaranteed: true` via the precompile's raw `subscribe`, owned by a funded EOA (62.29 SOM), 2 gwei priority, 60 gwei max, pointed at the already-deployed vault — subscription `16072852` | failed |
+viem's `getLogs` builds its topic filter from `event` and `args`. It does not
+accept a raw `topics` array, and it does not complain about one — it silently
+returns every log from the address in the range. The harness then took the first
+result and treated it as our `AnswerDelivered`.
 
-Neither `SomniaExtensions`' Solidity options struct nor the TypeScript SDK's
-`subscribe()` exposes `isGuaranteed`; both hardcode it to `false`. Only the
-precompile's raw `subscribe` takes it, so we called that directly. The record
-read back with `isGuaranteed: true`, an EOA owner rather than the zero address
-our contract-created subscriptions report, and every other field correct. The
-handler was still never invoked.
+Demonstrated directly over blocks 479937700-479937899: filtering on an
+*impossible* market id, the raw-topics query still returned a log, while the
+ABI-aware query returned nothing. The window held exactly one OracleHub log and
+it was a `DrainContinuation(uint256,uint256)`. So the block we cited as proof
+that "the event fired and the handler did not" never contained the event at all.
+The same evidence file recorded `matchesSubscriptionFilter: false` beside a
+hard-coded sentence claiming it matched.
 
-**Correction.** An earlier version of these notes cited a specific resolving
-block as proof that the event fired and the handler did not. That claim has been
-withdrawn. The evidence harness passed a raw `topics` array to viem's `getLogs`,
-which builds its filter from `event`/`args` and ignores that field, so the query
-returned every OracleHub log in the range and the harness took the first one — a
-`DrainContinuation(uint256,uint256)`, not an `AnswerDelivered`. The same file
-recorded `matchesSubscriptionFilter: false` beside a hard-coded sentence saying
-it matched.
+**What the corrected harness shows.** Querying with `parseAbiItem` and indexed
+`args`, validating emitter, topic0, market id and decoding, then reading the
+block's full call tree with `debug_traceBlockByNumber` and `callTracer`:
 
-Demonstrated directly: over blocks 479937700-479937899, a raw-topics query
-filtering on an *impossible* market id still returned that log, while the
-ABI-aware query returned nothing. The window contained exactly one OracleHub log
-and it was not an `AnswerDelivered` at all — so the cited block never carried the
-event the conclusion depended on.
+> Block `480220742` carried 4 validated `AnswerDelivered` events. The Reactivity
+> precompile `0x…0100` made **8 calls to the vault**, every one with selector
+> `0x53edf33d` (`onEvent`), at depth 0, **none reverting**.
 
-The harness now queries with `parseAbiItem` and indexed `args`, validates emitter,
-topic0, the exact market id in topic2 and successful decoding before any verdict
-may be written, and refuses to write one at all if validation fails. It also
-establishes handler dispatch from `debug_traceBlockByNumber` with `callTracer`,
-walked to every call depth, rather than counting top-level block transactions —
-a reactive callback need not be a top-level transaction, so the earlier framing
-was not a sound evidence source either.
+One of those markets, `0x…13fc7`, was our own armed trigger. The vault went
+`StepArmed -> Triggered -> Placed` in tx `0xdbff2003deb11bb3…` with **no
+`ResolutionSynced`** anywhere in the timeline. The sequence executed on its own.
 
-`getSubscriptionInfo` also returns the subscription owner as the zero address for
-every subscription created from a contract, which we could not explain and which
-makes the owner-balance requirement impossible to reason about from inside a
-contract.
+**`isGuaranteed` was not the cause either.** Four events produced eight
+dispatches — two per event — because both subscriptions delivered: the EOA-owned
+one with `isGuaranteed: true` *and* the vault-owned one created through
+`subscribeAllMarkets()` with `isGuaranteed: false`. The flag hypothesis is
+withdrawn along with the rest.
 
-**Why it matters.** A product whose promise is "it runs without you" cannot rest
-on a delivery that silently does not arrive. There is no revert, no event and no
-status change: the strategy simply never happens while the interface says it is
-waiting.
+**The lesson worth keeping.** Three of them:
 
-**Suggestion.** A way to read a subscription's health — last delivery, missed
-count, active flag, and the owner it is actually attributed to — would let an
-application notice and say so. A documented catch-up entry for a subscriber that
-missed a block would be better still.
+- A negative result about someone else's platform deserves more scrutiny than a
+  positive one about your own code, not less. This one survived four vaults and
+  six ruled-out causes because every test used the same broken observer.
+- An evidence file that disagrees with itself is telling you something. Ours
+  printed `matchesSubscriptionFilter: false` next to a conclusion that it
+  matched, and that contradiction sat in the repository unexamined.
+- A library that ignores an unrecognised option is a hazard. `getLogs` accepted
+  `topics`, returned plausible-looking data, and never signalled anything.
 
-**What we did about it.** Reactivity remains the primary path and we do not claim
-to have observed it working. Having exhausted every documented lever, including
-the one the tooling does not expose, we classify this as an external limitation
-of Reactivity delivery on Shannon rather than a fault in Sequence. `syncResolution(bytes32 marketId)` is the backstop:
-permissionless, takes only a market id, reads the outcome from the market
-contract itself, and runs the identical state machine behind the same
-idempotency key so a late delivery cannot double-fire. With it, a stuck sequence
-completed on chain (`docs/LIVE_FIRE.json`, `docs/FILL_EVIDENCE.json`).
+The harness now refuses to write any verdict without a validated event, records
+the caller and selector of every dispatch frame rather than a count, and a
+readiness check (`#19`) blocks the build if an evidence file contradicts itself.
+
+**What still stands as a genuine platform observation.** Neither
+`SomniaExtensions` nor the SDK's `subscribe()` exposes `isGuaranteed`; only the
+precompile's raw entry does. And `getSubscriptionInfo` reports the owner of every
+contract-created subscription as the zero address, which makes the 32 SOM owner
+minimum impossible to reason about from inside a contract. A readable
+subscription health view — last delivery, missed count, attributed owner — would
+have made this entire investigation unnecessary.
 
 ## 2. Indexer schema drift broke a working query silently
 

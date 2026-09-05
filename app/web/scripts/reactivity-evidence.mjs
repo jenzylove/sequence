@@ -154,10 +154,18 @@ async function traceBlock(blockNumber) {
   return { available: true, traces: json.result || [] };
 }
 
-function walk(node, out, depth = 0) {
+// The caller and the selector are the whole proof. A count of calls to an
+// address says nothing; "the precompile called onEvent on our vault and it did
+// not revert" is the claim, so those are the fields recorded.
+function walk(node, out, depth = 0, txHash = null) {
   if (!node) return out;
-  out.push({ depth, type: node.type, from: node.from, to: node.to });
-  for (const c of node.calls || []) walk(c, out, depth + 1);
+  out.push({
+    depth, type: node.type, from: node.from, to: node.to,
+    selector: (node.input || "").slice(0, 10),
+    error: node.error ?? null,
+    txHash,
+  });
+  for (const c of node.calls || []) walk(c, out, depth + 1, txHash);
   return out;
 }
 
@@ -165,17 +173,30 @@ const trace = await traceBlock(log.blockNumber);
 let dispatch = null;
 if (trace.available) {
   const frames = [];
-  for (const t of trace.traces) walk(t.result, frames);
+  for (const t of trace.traces) walk(t.result, frames, 0, t.txHash);
   const toVault = frames.filter((f) => f.to?.toLowerCase() === vault.toLowerCase());
   const fromPrecompile = frames.filter((f) => f.from?.toLowerCase() === Verified.REACTIVITY_PRECOMPILE.toLowerCase());
   const toPrecompile = frames.filter((f) => f.to?.toLowerCase() === Verified.REACTIVITY_PRECOMPILE.toLowerCase());
+  // A dispatch is only counted when the precompile is the caller, the selector is
+  // onEvent, and the frame did not revert.
+  const ON_EVENT = "0x53edf33d";
+  const dispatches = toVault.filter((f) =>
+    f.from?.toLowerCase() === Verified.REACTIVITY_PRECOMPILE.toLowerCase()
+    && f.selector === ON_EVENT);
+  const succeeded = dispatches.filter((f) => !f.error);
   dispatch = {
     evidenceSource: "debug_traceBlockByNumber with callTracer, walked to every depth",
     totalCallFrames: frames.length,
     callsToTheVaultAtAnyDepth: toVault.length,
     callsFromThePrecompileAtAnyDepth: fromPrecompile.length,
     callsToThePrecompileAtAnyDepth: toPrecompile.length,
-    vaultFrames: toVault.slice(0, 5),
+    handlerDispatchesFromPrecompile: dispatches.length,
+    handlerDispatchesThatSucceeded: succeeded.length,
+    onEventSelector: ON_EVENT,
+    frames: dispatches.map((f) => ({
+      txHash: f.txHash, depth: f.depth, type: f.type,
+      from: f.from, to: f.to, selector: f.selector, error: f.error,
+    })),
   };
   say(`trace: ${frames.length} call frames, ${toVault.length} to the vault, ${fromPrecompile.length} from the precompile`);
 } else {
@@ -196,16 +217,16 @@ const status = STATUS[Number(await pub.readContract({
 
 // ---- 5. derive the verdict from what was measured ---------------------------
 const handlerInvoked = trace.available
-  ? dispatch.callsToTheVaultAtAnyDepth > 0
+  ? dispatch.handlerDispatchesThatSucceeded > 0
   : null;
 
 let verdict, answer;
 if (handlerInvoked === true) {
   verdict = "REACTIVITY_DELIVERS";
-  answer = "Yes. A validated AnswerDelivered was followed by a call into the vault in the same block, so the handler was invoked.";
+  answer = `Yes. In the block carrying a validated AnswerDelivered, the Reactivity precompile called onEvent (${dispatch.onEventSelector}) on the vault ${dispatch.handlerDispatchesFromPrecompile} time(s), ${dispatch.handlerDispatchesThatSucceeded} of which completed without reverting.`;
 } else if (handlerInvoked === false) {
   verdict = "NO_DISPATCH_OBSERVED";
-  answer = "No. A validated AnswerDelivered matching the subscription was emitted, and the call tracer shows no call reaching the vault at any depth in that block.";
+  answer = "No. A validated AnswerDelivered matching the subscription was emitted, and the call tracer shows no successful onEvent dispatch from the precompile to the vault at any depth in that block.";
 } else {
   verdict = "INCONCLUSIVE";
   answer = "A validated AnswerDelivered was found, but no trace source was available to establish whether the handler was invoked.";
