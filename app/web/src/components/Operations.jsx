@@ -143,7 +143,7 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
 
                     {!state.subscribed && (
                       <p className="mt-5 rounded-sm bg-[#fff8f4] p-4 text-[10px] leading-[1.6] text-[#a8724f]">
-                        This vault holds no Somnia Reactivity subscription yet, so resolutions are not being delivered to it. Subscribing requires 32 SOM staked from the vault.
+                        This vault holds no Somnia Reactivity subscription yet, so settlements are not pushed to it automatically. Subscribing stakes 32 STT from the vault. It is optional: sequences still run when a settled result is pushed through manually.
                       </p>
                     )}
 

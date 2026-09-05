@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { money } from "../lib/language.js";
 import { sendVaultTx } from "../chain/vault.js";
+import { useTx } from "../hooks/useTx.js";
+import TxState from "./TxState.jsx";
 
 // The hard ceiling on everything Sequence can do. It lives on the account
 // itself, not in the interface, so raising it is a transaction the owner signs.
 export default function LimitDialog({ vault, wallet, onClose }) {
   const [value, setValue] = useState(() => (vault.state ? String(Number(vault.state.maxOutstanding) / 1e6) : "5"));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const tx = useTx();
+  const busy = tx.busy;
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && !busy && onClose();
@@ -25,20 +27,13 @@ export default function LimitDialog({ vault, wallet, onClose }) {
   const ready = isOwner && wallet.onShannon && next > 0n && next !== state.maxOutstanding && !busy;
 
   const save = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await sendVaultTx({
+    const r = await tx.run({
+      send: (onHash) => sendVaultTx({
         provider: wallet.provider, account: wallet.account, vault: vault.address,
-        functionName: "setMaxOutstanding", args: [next],
-      });
-      await vault.refresh();
-      onClose();
-    } catch (cause) {
-      setError(cause?.shortMessage || cause?.message || "That did not go through. Your limit is unchanged.");
-    } finally {
-      setBusy(false);
-    }
+        functionName: "setMaxOutstanding", args: [next], onHash,
+      }),
+    });
+    if (r.ok) { await vault.refresh(); onClose(); }
   };
 
   return (
@@ -79,11 +74,11 @@ export default function LimitDialog({ vault, wallet, onClose }) {
           </p>
         )}
         {!isOwner && <p className="mt-4 text-[10px] font-semibold text-[#a8a2ad]">This wallet does not control the account.</p>}
-        {error && <p className="mt-4 text-[10px] font-semibold text-[#dc6e58]" role="alert">{error}</p>}
+        <TxState tx={tx} labels={{ success: "Your limit is updated." }} />
 
         <div className="mt-6 flex items-center gap-3">
           <button disabled={!ready} onClick={save} className="soft-button bg-[#111014] px-6 py-3 text-white disabled:opacity-35">
-            {busy ? "Approve in your wallet…" : "Save limit"}
+            {busy ? "Saving…" : "Save limit"}
           </button>
           <button onClick={onClose} disabled={busy} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#242128]">Cancel</button>
         </div>

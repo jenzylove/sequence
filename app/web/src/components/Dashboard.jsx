@@ -7,6 +7,9 @@ import { explainEvent } from "../lib/command.js";
 import { loadDrafts, removeDraft } from "../lib/store.js";
 import { cancelStep, syncResolution, redeemPosition } from "../chain/vault.js";
 import { findClaimablePositions } from "../chain/positions.js";
+import { useTx } from "../hooks/useTx.js";
+import GoLive from "./GoLive.jsx";
+import TxState from "./TxState.jsx";
 import { readMarketOnchain } from "../chain/module.js";
 
 const TABS = [
@@ -22,7 +25,9 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
   const [tab, setTab] = useState("active");
   const [drafts, setDrafts] = useState(() => loadDrafts(wallet.account));
   const [limitOpen, setLimitOpen] = useState(false);
-  const [busy, setBusy] = useState(null);
+  const [acting, setActing] = useState(null);
+  const tx = useTx();
+  const busy = tx.busy ? acting : null;
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -90,38 +95,51 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
     return () => { live = false; };
   }, [vault.address, vault.status, completed.length]);
 
+  // Every one of these opens a wallet, and every one of them used to swallow
+  // whatever came back. Cancelling a signature produced no message, no change
+  // and no way to tell the click had registered at all.
   const claim = async (position) => {
-    setBusy(position.marketId);
-    try {
-      await redeemPosition({
+    setActing(position.marketId);
+    const r = await tx.run({
+      send: (onHash) => redeemPosition({
         provider: wallet.provider, account: wallet.account,
-        vault: vault.address, marketId: position.marketId,
-      });
-      setClaimable(await findClaimablePositions(vault.address));
+        vault: vault.address, marketId: position.marketId, onHash,
+      }),
+    });
+    if (r.ok) {
+      setClaimable(await findClaimablePositions(vault.address).catch(() => claimable));
       await vault.refresh();
-    } catch { /* surfaced by the next read */ } finally { setBusy(null); }
+    }
   };
 
   const checkResult = async (step) => {
-    setBusy(step.stepId);
-    try {
-      await syncResolution({
+    setActing(step.stepId);
+    const r = await tx.run({
+      send: (onHash) => syncResolution({
         provider: wallet.provider, account: wallet.account,
-        vault: vault.address, marketId: step.triggerMarketId,
-      });
-      await vault.refresh();
-    } catch { /* surfaced by the next read */ } finally { setBusy(null); }
+        vault: vault.address, marketId: step.triggerMarketId, onHash,
+      }),
+    });
+    if (r.ok) await vault.refresh();
   };
 
   const stopSequence = async (step) => {
-    setBusy(step.stepId);
-    try {
-      await cancelStep({ provider: wallet.provider, account: wallet.account, vault: vault.address, stepId: step.stepId });
-      await vault.refresh();
-    } catch { /* surfaced by the next read */ } finally { setBusy(null); }
+    setActing(step.stepId);
+    const r = await tx.run({
+      send: (onHash) => cancelStep({
+        provider: wallet.provider, account: wallet.account,
+        vault: vault.address, stepId: step.stepId, onHash,
+      }),
+    });
+    if (r.ok) await vault.refresh();
   };
 
-  const setupDone = Boolean(state?.subscribed && state?.bankroll > 0n);
+  // Funds are what a sequence actually needs. Listening for results on its own
+  // is an upgrade, so it is never what this banner leads with — saying "nothing
+  // will run" about an optional step sends people at a 32 STT stake they do not
+  // need and probably cannot reach.
+  const needsFunds = !(state?.bankroll > 0n);
+  const setupDone = !needsFunds;
 
   return (
     <section id="dashboard" className="dashboard-shell">
@@ -161,19 +179,10 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
           </div>
         )}
 
-        {!setupDone && (
-          <div className="setup-banner mt-6">
-            <div>
-              <div className="text-[12px] font-bold text-[#242128]">One-time setup is not finished</div>
-              <p className="mt-1.5 text-[10px] leading-[1.6] text-[#8a5f47]">
-                {!state?.subscribed
-                  ? "Your account is not listening for market results yet, so nothing will run on its own."
-                  : "Your account holds no funds to trade with yet."}
-              </p>
-            </div>
-            <button onClick={onOpenDetails} className="soft-button bg-[#111014] text-white">Finish setup</button>
-          </div>
-        )}
+        {/* Funding is required, so it belongs on the screen people actually live
+            on. It used to exist only behind "Onchain details", which meant the
+            one mandatory step was reached through a page of event signatures. */}
+        {!setupDone && <GoLive vault={vault} wallet={wallet} />}
 
         {state?.paused && (
           <div className="setup-banner mt-6">
@@ -220,10 +229,31 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
                             <div className="mt-1.5 text-[10px] text-[#a19ca5]">
                               If YES → {sideLabel(s.actionOnWin0)} · If NO → {sideLabel(s.actionOnWin1)} · up to {money(s.notionalCap)}
                             </div>
+                            {resolvable[s.stepId] && (
+                              <div className="mt-2 text-[10px] leading-[1.55] text-[#a8813f]">
+                                This market has settled but the result has not reached your account yet. Check it to move the sequence on.
+                              </div>
+                            )}
                           </div>
-                          <button disabled={busy === s.stepId} onClick={() => stopSequence(s)} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#dc6e58] disabled:opacity-40">
-                            {busy === s.stepId ? "Stopping…" : "Stop"}
-                          </button>
+                          <div className="flex items-center gap-4">
+                            {/* The market has settled but the result has not
+                                reached the account. This is the way out of a
+                                sequence that would otherwise wait for ever, and
+                                anyone can press it. */}
+                            {resolvable[s.stepId] && (
+                              <button
+                                disabled={busy === s.stepId}
+                                onClick={() => checkResult(s)}
+                                className="soft-button bg-[#111014] px-4 py-2 text-white disabled:opacity-40"
+                              >
+                                {busy === s.stepId ? "Checking…" : "Check result"}
+                              </button>
+                            )}
+                            <button disabled={busy === s.stepId} onClick={() => stopSequence(s)} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#dc6e58] disabled:opacity-40">
+                              {busy === s.stepId ? "Stopping…" : "Stop"}
+                            </button>
+                          </div>
+                          {acting === s.stepId && <TxState tx={tx} labels={{ success: "Done." }} className="basis-full" />}
                         </div>
                       );
                     })}
@@ -276,6 +306,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
                           className="soft-button bg-[#111014] px-4 py-2 text-white disabled:opacity-50">
                           {busy === p.marketId ? "Collecting…" : "Collect"}
                         </button>}
+                    {acting === p.marketId && <TxState tx={tx} labels={{ success: "Collected. The funds are back in your account." }} className="basis-full" />}
                   </div>
                 ))}
               </div>
