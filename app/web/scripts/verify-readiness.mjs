@@ -28,18 +28,43 @@ const state = await readVaultState().catch(() => null);
 if (!state) {
   add("11", "deployment", "BLOCKED", `cannot read the vault at ${SHANNON.vault}`);
 } else {
+  // Compare the executable code, not the source hash. Immutables (owner, module,
+  // collateral) are written into the deployed copy and zeroed in the artifact,
+  // and the CBOR trailer hashes the source *text* so a comment edit changes it
+  // while the code is byte-for-byte identical. Both are accounted for, and a
+  // source-text-only difference is reported rather than called a stale deploy.
+  const stripMetadata = (body) => {
+    const len = parseInt(body.slice(-4), 16);
+    if (!Number.isFinite(len) || len <= 0 || (len + 2) * 2 >= body.length) return body;
+    return body.slice(0, body.length - (len + 2) * 2);
+  };
+  const maskImmutables = (body, refs) => {
+    const chars = [...body];
+    for (const spans of Object.values(refs || {})) {
+      for (const { start, length } of spans) {
+        for (let i = start * 2; i < (start + length) * 2 && i < chars.length; i++) chars[i] = "0";
+      }
+    }
+    return chars.join("");
+  };
+
   let deployMatch = null;
+  let sourceTextDiffers = false;
   try {
-    const onchain = await publicClient().getCode({ address: SHANNON.vault });
+    const onchain = (await publicClient().getCode({ address: SHANNON.vault })).replace(/^0x/, "");
     const artifact = JSON.parse(readFileSync(join(repo, "out/SequenceVault.sol/SequenceVault.json"), "utf8"));
-    const local = artifact.deployedBytecode.object;
-    // Compare the tail, which carries the metadata hash of the exact source.
-    deployMatch = onchain.slice(-120) === local.slice(-120);
+    const local = artifact.deployedBytecode.object.replace(/^0x/, "");
+    const refs = artifact.deployedBytecode.immutableReferences;
+    deployMatch = stripMetadata(maskImmutables(onchain, refs)) === stripMetadata(maskImmutables(local, refs));
+    sourceTextDiffers = onchain.slice(-120) !== local.slice(-120);
   } catch { deployMatch = null; }
 
   add("11a", "deployment", deployMatch === true ? "OK" : deployMatch === false ? "BLOCKED" : "CHECK",
-    deployMatch === true ? `deployed bytecode is this build (${SHANNON.vault})`
-      : deployMatch === false ? "deployed bytecode differs from this build"
+    deployMatch === true
+      ? sourceTextDiffers
+        ? `deployed executable code is this build (${SHANNON.vault}); only the source-metadata hash differs, from a comment edit`
+        : `deployed bytecode is this build (${SHANNON.vault})`
+      : deployMatch === false ? "deployed executable code differs from this build"
       : "could not read the deployed code, so this is unverified right now",
     deployMatch === false ? "redeploy with app/web/scripts/migrate-phase2.sh" : null);
 
