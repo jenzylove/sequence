@@ -3,7 +3,8 @@ import { shortAccount } from "../hooks/useWallet.js";
 import { fmt, KIND_LABEL } from "../sim.js";
 import { txUrl, addressUrl, SHANNON } from "../chain/config.js";
 import { cancelStep, setPaused } from "../chain/vault.js";
-import GoLive from "./GoLive.jsx";
+import FundPanel from "./FundPanel.jsx";
+import Automation from "./Automation.jsx";
 import ScreenHeader from "./ScreenHeader.jsx";
 
 const TERMINAL = ["EXECUTED", "SKIPPED", "EXPIRED", "CANCELLED"];
@@ -206,7 +207,12 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
           </article>
         </div>
 
-        <GoLive vault={vault} wallet={wallet} />
+        {state && (
+          <>
+            <div className="mt-10"><FundPanel wallet={wallet} vault={vault} required={state.maxOutstanding} /></div>
+            <Automation vault={vault} wallet={wallet} />
+          </>
+        )}
 
         <p className="mt-10 text-center font-mono text-[9px] uppercase tracking-[.12em] text-[#a19ca5]">
           Vault {vault.address} · {SHANNON.name} · chain {SHANNON.chainId}

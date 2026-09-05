@@ -15,6 +15,7 @@ import { checkTradable } from "../chain/module.js";
 import { txUrl, addressUrl } from "../chain/config.js";
 import { upsertDraft, newDraftId, latestDraft } from "../lib/store.js";
 import ScreenHeader from "./ScreenHeader.jsx";
+import ActivateDialog from "./ActivateDialog.jsx";
 import CommandBar from "./CommandBar.jsx";
 import {
   marketName, marketQuestion, branchActions, describePlan,
@@ -33,6 +34,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   // Activation is several signatures, not one. Saying which one is open, and
   // how many remain, is the difference between a flow and a pile of popups.
   const [progress, setProgress] = useState(null);
+  const [activateOpen, setActivateOpen] = useState(false);
   const [armResult, setArmResult] = useState(null);
   const [book, setBook] = useState(null);
   const [tradable, setTradable] = useState(null);
@@ -198,14 +200,19 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
     setArmResult(null);
   };
 
-  const isOwner = vault.isOwner(wallet.account);
-  const ready = wallet.connected && wallet.onShannon && isOwner && !vault.state?.paused && errors.length === 0 && steps.length > 0;
+  // A trader can build a whole sequence before Sequence has any infrastructure
+  // for them. An account is something activation needs, not something reading
+  // the markets and choosing a trade needs, so its absence is not a blocker
+  // here - it becomes the first step of the activation flow instead.
+  const hasAccount = !vault.needsVault && Boolean(vault.address);
+  const isOwner = !hasAccount || vault.isOwner(wallet.account);
+  const ready = wallet.connected && wallet.onShannon && isOwner
+    && !vault.state?.paused && errors.length === 0 && steps.length > 0;
   const blocker = !wallet.connected
     ? "Connect your wallet to activate this."
     : !wallet.onShannon ? "Switch your wallet to the Somnia network."
-    : !vault.state ? "Reading your account…"
     : !isOwner ? "This wallet does not control the trading account."
-    : vault.state.paused ? "Trading is paused. Resume it first."
+    : vault.state?.paused ? "Trading is paused. Resume it first."
     : errors.length ? errors[0].message
     : null;
 
@@ -219,14 +226,16 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
     setProgress({ label: "Checking the markets are still tradable…", at: 0, of: 0 });
 
     // Nothing below is worth opening a wallet for if the wallet cannot pay.
-    const gas = await checkGas({
-      account: wallet.account,
-      contract: { address: vault.address, abi: vaultAbi, functionName: "cancelStep", args: [onchainStepId(strategy, strategy.steps[0])] },
-    });
-    if (gas.ok === false && gas.reason === "insufficient-gas") {
-      setArmResult({ ok: false, error: `${gas.message} Top up before activating; nothing was sent.` });
-      setArming(false); setProgress(null);
-      return;
+    if (vault.address) {
+      const gas = await checkGas({
+        account: wallet.account,
+        contract: { address: vault.address, abi: vaultAbi, functionName: "cancelStep", args: [onchainStepId(strategy, strategy.steps[0])] },
+      });
+      if (gas.ok === false && gas.reason === "insufficient-gas") {
+        setArmResult({ ok: false, error: `${gas.message} Top up before activating; nothing was sent.` });
+        setArming(false); setProgress(null);
+        return;
+      }
     }
 
     // The indexer can lag, and pools are recycled between windows. Confirm
@@ -550,7 +559,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
               <div className="mt-7">
                 {wallet.connected ? (
                   <>
-                  <button disabled={!ready || arming} onClick={activate} className="soft-button w-full bg-[#111014] py-3 text-white disabled:opacity-35">
+                  <button disabled={!ready || arming} onClick={() => setActivateOpen(true)} className="soft-button w-full bg-[#111014] py-3 text-white disabled:opacity-35">
                     {arming ? "Activating…" : `Activate sequence · risk ${fmt(strategy.maxOutstanding)}`}
                   </button>
                   {arming && progress && (
@@ -586,6 +595,18 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
           </div>
         </div>
       </div>
+
+      <ActivateDialog
+        open={activateOpen}
+        strategy={strategy}
+        wallet={wallet}
+        vault={vault}
+        arming={arming}
+        progress={progress}
+        armResult={armResult}
+        onArm={activate}
+        onClose={() => setActivateOpen(false)}
+      />
     </section>
   );
 }

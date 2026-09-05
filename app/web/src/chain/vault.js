@@ -67,6 +67,14 @@ export async function readStepForMarket(marketId, vault = SHANNON.vault) {
 
 // Shannon caps eth_getLogs at a 1000-block window, so history is walked in
 // chunks from a known starting block (the block a step was actually armed in).
+const erc20TransferAbi = [
+  { type: "function", stateMutability: "nonpayable", name: "transfer",
+    inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }],
+    outputs: [{ type: "bool" }] },
+  { type: "function", stateMutability: "view", name: "balanceOf",
+    inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+];
+
 const LOG_CHUNK = 1000n;
 const MAX_CHUNKS = 40;
 
@@ -180,6 +188,37 @@ export async function fundVault({ provider, account, value, vault = SHANNON.vaul
   const receipt = await client.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error("The network rejected this transfer, so nothing moved.");
   return { hash, receipt, blockNumber: receipt.blockNumber, status: receipt.status };
+}
+
+// Move test USDC from the connected wallet into the trading account.
+//
+// This is the funding path a trader should actually get: Sequence builds the
+// transfer and the wallet signs it. Handing someone an address to copy, then
+// asking them to open their wallet, find the token and send it by hand, is not a
+// funding flow — it is an instruction manual.
+export async function fundVaultCollateral({ provider, account, vault = SHANNON.vault, amount, collateral = SHANNON.testUsdc, onHash }) {
+  const client = publicClient();
+  const { request } = await client.simulateContract({
+    address: collateral, abi: erc20TransferAbi, functionName: "transfer",
+    args: [vault, amount], account,
+  });
+  const hash = await walletClientFor(provider, account).writeContract(request);
+  onHash?.(hash);
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("The network rejected the transfer, so nothing moved.");
+  return { hash, receipt, status: receipt.status };
+}
+
+// The same call, unsigned, so the fee can be estimated before a wallet opens.
+export function fundVaultCall({ vault = SHANNON.vault, amount, collateral = SHANNON.testUsdc }) {
+  return { address: collateral, abi: erc20TransferAbi, functionName: "transfer", args: [vault, amount] };
+}
+
+export async function readWalletCollateral(account, collateral = SHANNON.testUsdc) {
+  if (!account) return 0n;
+  return publicClient().readContract({
+    address: collateral, abi: erc20TransferAbi, functionName: "balanceOf", args: [account],
+  }).catch(() => 0n);
 }
 
 export async function readNativeBalance(address) {

@@ -8,8 +8,23 @@
 import { publicClient } from "./vault.js";
 import { SHANNON } from "./config.js";
 
+// Test-token help, checked rather than assumed.
+//
+// `dreamdex.somnia.network` does not resolve at all, so the old "Get test USDC"
+// link was a dead button. The real site is dreamdex.io, and it publishes no
+// faucet path we could verify. Rather than invent a URL that sends people
+// nowhere, the USDC case says plainly where the token comes from and points at a
+// channel that does exist.
+//
+// The Somnia testnet hub is real and is what the docs name for STT, but it is a
+// hub rather than a one-click faucet, so it is described as what it is.
 export const FAUCET_URL = "https://testnet.somnia.network/";
-export const DREAMDEX_URL = "https://dreamdex.somnia.network/";
+export const SOMNIA_DISCORD = "https://discord.com/invite/somnia";
+
+export const TEST_TOKEN_HELP = {
+  stt: "STT is the network's own token and pays transaction fees. The Somnia testnet hub is where it is handed out; if the faucet there is not serving requests, the developer channels on Discord are the reliable route.",
+  usdc: "Test USDC is the collateral DreamDEX Event Contracts trade against. There is no public faucet page we can point you to that we have verified works, so we would rather say that than send you to a dead link. Ask in Somnia's Discord developer chat and someone will fund your address.",
+};
 
 const erc20BalanceAbi = [{
   type: "function", stateMutability: "view", name: "balanceOf",

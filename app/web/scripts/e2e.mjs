@@ -165,31 +165,36 @@ const connectViaBuild = async (page, { expect = "#build" } = {}) => {
 
 // ------------------------------------------------------- a brand new wallet
 // The suite used to inject the vault owner's address everywhere, which proved
-// only that the author's own account worked. A fresh wallet must get its own
-// account offered, not somebody else's balances.
+// only that the author's own account worked. A fresh wallet must be able to use
+// the product before it owns any infrastructure at all: the account is created
+// during activation, from the sequence it has already built.
 {
   const FRESH = "0x1111111111111111111111111111111111111111";
   const { context, page } = await newPage({ width: 1440, height: 1000 }, { owner: FRESH });
   await page.goto(base, { waitUntil: "domcontentloaded" });
-  try {
-    await connectViaBuild(page, { expect: "#provision" });
-  } catch (cause) {
-    const body = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400);
-    console.log(`  DIAG  provision never rendered. page shows: ${body}`);
-    console.log(`  DIAG  screens -> provision:${await page.locator("#provision").count()} build:${await page.locator("#build").count()} dashboard:${await page.locator("#dashboard").count()}`);
-    console.log(`  DIAG  errors: ${errors.slice(-3).join(" || ") || "none captured"}`);
-    throw cause;
+  await connectViaBuild(page, { expect: "#build" });
+
+  check("a wallet with no account reaches the builder", (await page.locator("#build").count()) > 0);
+  check("no standalone onboarding page stands in the way", (await page.locator("#provision").count()) === 0);
+
+  const build = await page.locator("#build").innerText();
+  check("a fresh wallet is never shown another account's balances",
+    !/At risk now|Still free/.test(build));
+
+  // Activation is where infrastructure is introduced, and it names the limit the
+  // trader chose rather than asking for an unexplained number up front.
+  const activate = page.getByRole("button", { name: /Activate sequence/ });
+  if (await activate.count() && await activate.isEnabled()) {
+    await activate.click();
+    await page.waitForTimeout(2000);
+    const dialog = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+    check("activation explains the account in one sentence",
+      /needs a personal trading account/i.test(dialog));
+    check("activation uses the limit from the sequence just built",
+      /enforce the \$/i.test(dialog));
   }
 
-  const provision = await page.locator("#provision").innerText();
-  check("a wallet with no account is offered one", /Create your trading account/i.test(provision));
-  check("provisioning explains ownership in plain words", /only you control|belongs to your wallet/i.test(provision));
-  check("provisioning offers a create action", (await page.getByRole("button", { name: "Create my account" }).count()) > 0);
-  check("a fresh wallet is never shown another account's balances",
-    !/At risk now|Still free/.test(provision));
-  check("the builder is not reachable without an account", (await page.locator("#build").count()) === 0);
-
-  await page.screenshot({ path: join(shots, "e2e-provision.png"), fullPage: true });
+  await page.screenshot({ path: join(shots, "e2e-build-no-account.png"), fullPage: true });
   await context.close();
 }
 
@@ -350,16 +355,19 @@ const connectViaBuild = async (page, { expect = "#build" } = {}) => {
   // Setup is no longer framed as one undifferentiated block of "one-time setup":
   // funding is required, the staked automation is not, and presenting the second
   // as mandatory sent people at a 32 STT stake they do not need.
-  // An "Optional" badge only renders while that step is outstanding, so for a
-  // fully configured account the durable property is the ordering and the
-  // absence of the old claim that nothing runs without the stake.
+  // Setup is no longer a block of cards. Funding is a real in-app transfer with
+  // both balances on screen, and the staked automation is a collapsed setting
+  // that states the manual alternative rather than posing as required work.
   {
-    const panel = /Get ready to trade|Set your account up/i.test(details);
-    const fundsFirst = details.indexOf("Put trading funds in");
-    const autoLast = details.indexOf("Run it hands-free");
-    const noFalseBlocker = !/nothing will run on its own/i.test(details);
-    check("setup leads with funding and never calls the staked step a blocker",
-      panel && fundsFirst > -1 && autoLast > fundsFirst && noFalseBlocker);
+    const fundsInApp = /Move funds into your account/i.test(details)
+      && /your wallet/i.test(details) && /sequence account/i.test(details);
+    const noSetupCards = !/Put trading funds in/.test(details) && !/Set your account up/.test(details);
+    // The manual alternative is only worth stating while automation is off; for
+    // an account that already has it, saying so is the honest line.
+    const automationHonest = /Automation/.test(details)
+      && (/Check result/.test(details) || /reach your account automatically/i.test(details));
+    check("funding is in-app and the staked step is a setting, not onboarding",
+      fundsInApp && noSetupCards && automationHonest);
   }
 
   await page.screenshot({ path: join(shots, "e2e-details.png"), fullPage: true });

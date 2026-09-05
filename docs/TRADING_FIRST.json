@@ -1,0 +1,53 @@
+{
+  "note": "A trader arriving with a wallet and no Sequence account, building the trade first and creating infrastructure only when activation needed it.",
+  "traderWallet": "0x971F42260875B9576bb2f6280512FA59110018D9",
+  "vault": "0xEf48044FCB0e71975F8DD7e7B3733FCD47694792",
+  "riskLimitFromStrategy": "5000000",
+  "accountBalance": "5000000",
+  "outstanding": "0",
+  "steps": [
+    {
+      "step": "wallet state",
+      "detail": "on Shannon with 2.00 STT for gas and $12.00 of test USDC",
+      "tx": "0x63b60266c6333df22500ac8df295d115ebc8b91eb62cfc4820a70f800e05743f",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0x63b60266c6333df22500ac8df295d115ebc8b91eb62cfc4820a70f800e05743f"
+    },
+    {
+      "step": "no Sequence account",
+      "detail": "factory.vaultFor() returns nothing, so the trader owns no infrastructure yet",
+      "tx": null,
+      "explorer": null
+    },
+    {
+      "step": "built the sequence",
+      "detail": "watch BTC 5m → trade BTC 1h, $2.00 per trade, risk limit $5.00 — chosen with no account in existence",
+      "tx": null,
+      "explorer": null
+    },
+    {
+      "step": "created the account at activation",
+      "detail": "0xEf48044FCB0e71975F8DD7e7B3733FCD47694792, enforcing the $5.00 limit the trader chose",
+      "tx": "0xbbede97aef97d94bd7113d8abd7c17c6b2c23310b6cd57a0f1b60c03f38ced65",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0xbbede97aef97d94bd7113d8abd7c17c6b2c23310b6cd57a0f1b60c03f38ced65"
+    },
+    {
+      "step": "funded in-app",
+      "detail": "$0.00 → $5.00; the transfer was built by Sequence and signed in the wallet, no address copied",
+      "tx": "0x68b3eb8f301fdfeb170756144ae4f39e3212bb8b7c022ddd3f6ad2ea87267539",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0x68b3eb8f301fdfeb170756144ae4f39e3212bb8b7c022ddd3f6ad2ea87267539"
+    },
+    {
+      "step": "gave the market permission",
+      "detail": "pool 0xaf1b25846d342d39e28ddcbbb771ad3eb8a75c10 may draw up to $5.00",
+      "tx": "0xc451a98899db17d8bb57999ba286dd026c7057ddd8c31ff5462053c3b770f543",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0xc451a98899db17d8bb57999ba286dd026c7057ddd8c31ff5462053c3b770f543"
+    },
+    {
+      "step": "armed the sequence",
+      "detail": "step status ARMED",
+      "tx": "0xc6edb1f896e84eaa80c482e113d9e48b11b42ce0971334b26ed66ebe2dba3ab7",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0xc6edb1f896e84eaa80c482e113d9e48b11b42ce0971334b26ed66ebe2dba3ab7"
+    }
+  ],
+  "walkedAt": "2026-09-05T12:41:46.327Z"
+}

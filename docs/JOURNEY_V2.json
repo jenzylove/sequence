@@ -1,0 +1,58 @@
+{
+  "walkedAt": "2026-09-05T12:49:53.387Z",
+  "noAccountWallet": "0xa2C83CE573394ae170b5A9a341F77D092Fc74c37",
+  "activatedWallet": "0x971F42260875B9576bb2f6280512FA59110018D9",
+  "results": [
+    {
+      "stage": "Landing is reachable",
+      "pass": true,
+      "note": "public page",
+      "shot": "01-landing.png"
+    },
+    {
+      "stage": "A wallet with no account lands in the Builder, not onboarding",
+      "pass": true,
+      "note": "the Builder rendered with no vault in existence",
+      "shot": "02-builder-no-account.png"
+    },
+    {
+      "stage": "The Builder shows live markets before any infrastructure exists",
+      "pass": true,
+      "note": "live market windows are selectable",
+      "shot": "03-builder-markets.png"
+    },
+    {
+      "stage": "Account creation appears at activation, tied to the sequence",
+      "pass": true,
+      "note": "explains the account in one sentence and quotes the limit the trader just chose",
+      "shot": "04-activate-creates-account.png"
+    },
+    {
+      "stage": "The dashboard leads with trading, not setup cards",
+      "pass": true,
+      "note": "no three-card setup block; balance and markets lead",
+      "shot": "05-dashboard.png"
+    },
+    {
+      "stage": "Funding is in-app, with both balances shown",
+      "pass": true,
+      "note": "wallet balance, account balance, amount and a Fund Sequence action",
+      "shot": "06-fund-panel.png"
+    },
+    {
+      "stage": "No faucet prompt for a wallet that already holds test USDC",
+      "pass": true,
+      "note": "faucet help is not shown to a funded wallet",
+      "shot": "07-no-faucet-prompt.png"
+    },
+    {
+      "stage": "The 32 STT stake is an optional setting, not onboarding",
+      "pass": true,
+      "note": "stake is a collapsed setting and states the manual alternative honestly",
+      "shot": "08-automation.png"
+    }
+  ],
+  "pageErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_CLOSED"
+  ]
+}
