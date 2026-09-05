@@ -8,7 +8,8 @@ import { loadDrafts, removeDraft } from "../lib/store.js";
 import { cancelStep, syncResolution, redeemPosition } from "../chain/vault.js";
 import { findClaimablePositions } from "../chain/positions.js";
 import { useTx } from "../hooks/useTx.js";
-import GoLive from "./GoLive.jsx";
+import FundPanel from "./FundPanel.jsx";
+import Automation from "./Automation.jsx";
 import TxState from "./TxState.jsx";
 import { readMarketOnchain } from "../chain/module.js";
 
@@ -25,6 +26,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
   const [tab, setTab] = useState("active");
   const [drafts, setDrafts] = useState(() => loadDrafts(wallet.account));
   const [limitOpen, setLimitOpen] = useState(false);
+  const [fundOpen, setFundOpen] = useState(false);
   const [acting, setActing] = useState(null);
   const tx = useTx();
   const busy = tx.busy ? acting : null;
@@ -134,12 +136,6 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
     if (r.ok) await vault.refresh();
   };
 
-  // Funds are what a sequence actually needs. Listening for results on its own
-  // is an upgrade, so it is never what this banner leads with — saying "nothing
-  // will run" about an optional step sends people at a 32 STT stake they do not
-  // need and probably cannot reach.
-  const needsFunds = !(state?.bankroll > 0n);
-  const setupDone = !needsFunds;
 
   return (
     <section id="dashboard" className="dashboard-shell">
@@ -173,6 +169,16 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
               <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Still free</div>
               <div className="mt-1.5 text-[20px] font-extrabold tracking-[-.04em] text-[#40906b]">{money(headroom)}</div>
             </div>
+            <div className="h-8 w-px bg-[#e5e1e8]" />
+            <div>
+              <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Balance</div>
+              <div className="mt-1.5 flex items-baseline gap-2">
+                <span className="text-[20px] font-extrabold tracking-[-.04em] text-[#161419]">{money(state.bankroll)}</span>
+                <button onClick={() => setFundOpen((v) => !v)} className="text-[9px] font-bold text-[#6f58c2]">
+                  {fundOpen ? "close" : "fund"}
+                </button>
+              </div>
+            </div>
             <div className="hidden h-1 flex-1 overflow-hidden rounded-full bg-[#ebe8ee] sm:block">
               <div className="h-full rounded-full bg-[#8b72e8] transition-all" style={{ width: `${usage}%` }} />
             </div>
@@ -182,7 +188,11 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
         {/* Funding is required, so it belongs on the screen people actually live
             on. It used to exist only behind "Onchain details", which meant the
             one mandatory step was reached through a page of event signatures. */}
-        {!setupDone && <GoLive vault={vault} wallet={wallet} />}
+        {state && fundOpen && (
+          <div className="mt-6">
+            <FundPanel wallet={wallet} vault={vault} required={state.maxOutstanding} onFunded={() => setFundOpen(false)} />
+          </div>
+        )}
 
         {state?.paused && (
           <div className="setup-banner mt-6">
@@ -343,6 +353,8 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
             </div>
           )}
         </div>
+
+        {state && <Automation vault={vault} wallet={wallet} />}
 
         <div className="mt-8 text-center">
           <button onClick={onOpenDetails} className="details-toggle">Onchain details and receipts →</button>

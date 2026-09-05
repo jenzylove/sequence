@@ -95,8 +95,10 @@ if (!state) {
       args: [SHANNON.vault, SHANNON.binaryModule],
     });
   } catch { /* allowance is per-pool; module is only a smoke check */ }
-  const allPools = /ensurePoolAllowances/.test(src("app/web/src/components/Builder.jsx"))
-    && /ensurePoolAllowances/.test(src("app/web/src/components/GoLive.jsx"));
+  // Permission is granted at activation for every pool the sequence could reach.
+  // It is no longer a standalone onboarding step, so the Builder is the only
+  // place that needs to do it.
+  const allPools = /ensurePoolAllowances/.test(src("app/web/src/components/Builder.jsx"));
   add("9", "permissions", allPools ? "OK" : "PARTIAL",
     allPools
       ? "every pool a sequence could execute against is approved before arming, not just the first"
@@ -110,7 +112,7 @@ if (!state) {
 // ---------------------------------------------------------------- source
 const vaultSol = src("src/SequenceVault.sol");
 const builder = src("app/web/src/components/Builder.jsx");
-const goLive = src("app/web/src/components/GoLive.jsx");
+const funding = src("app/web/src/components/FundPanel.jsx");
 const strategy = src("app/web/src/strategy.js");
 const useVault = src("app/web/src/hooks/useVault.js");
 const contracts = readdirSync(join(repo, "src"));
@@ -180,9 +182,15 @@ add("8", "execution", rechecks ? "OK" : "PARTIAL",
     : "market tradability comes from the indexer, which can lag, and is not rechecked onchain",
   rechecks ? null : "verify the successor is still tradable before arming");
 
-const topUp = /shortfall/.test(goLive);
+// Funding asks for what this sequence actually needs, not a round number: the
+// shortfall against the strategy's own risk limit, in the automation stake and
+// in the collateral transfer alike.
+const automation = src("app/web/src/components/Automation.jsx");
+const topUp = /shortfall/.test(automation) && /short > 0n/.test(funding);
 add("12", "setup", topUp ? "OK" : "BLOCKED",
-  topUp ? "setup tops up only the shortfall of the stake" : "setup sends a full 32 SOM even when the vault already holds some");
+  topUp
+    ? "funding asks for the shortfall this sequence needs, and the stake tops up rather than resending a full 32 STT"
+    : "setup asks for a fixed amount instead of the shortfall");
 
 const factoryAddr = /factory:\s*"(0x[0-9a-fA-F]{40})"/.exec(src("app/web/src/chain/config.js"))?.[1];
 add("1b", "multi-user", factoryAddr ? "OK" : "BLOCKED",

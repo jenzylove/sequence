@@ -8,7 +8,6 @@ import Operations from "./components/Operations.jsx";
 import DemoRun from "./components/DemoRun.jsx";
 import Closing from "./components/Closing.jsx";
 import WalletDialog from "./components/WalletDialog.jsx";
-import Provision from "./components/Provision.jsx";
 import { useWallet } from "./hooks/useWallet.js";
 import { useMarkets } from "./hooks/useMarkets.js";
 import { useVault } from "./hooks/useVault.js";
@@ -103,13 +102,13 @@ export default function App() {
           history, so it stays reachable to someone still deciding. */}
       {view === "demo" && <DemoRun onBuild={() => startBuilding()} />}
 
-      {/* A wallet with no account cannot use any product screen, so it is
-          offered its own rather than shown someone else's balances. */}
-      {connected && vault.needsVault && view !== "landing" && (
-        <Provision wallet={wallet} vault={vault} onReady={() => show("home")} />
-      )}
-
-      {view === "home" && !vault.needsVault && (
+      {/* A wallet with no account used to be sent to a standalone onboarding
+          page before it could reach anything. That put our infrastructure in
+          front of the product: you had to understand a vault and pick a risk
+          ceiling before you had seen a single market. The account is now created
+          during activation, from the sequence the trader has already built, so
+          every product screen works without one. */}
+      {view === "home" && (
         <Dashboard
           markets={markets}
           vault={vault}
@@ -120,7 +119,7 @@ export default function App() {
         />
       )}
 
-      {view === "build" && !vault.needsVault && (
+      {view === "build" && (
         <Builder
           markets={markets}
           vault={vault}
@@ -132,7 +131,7 @@ export default function App() {
         />
       )}
 
-      {view === "details" && !vault.needsVault && (
+      {view === "details" && (
         <Operations
           wallet={wallet}
           vault={vault}
