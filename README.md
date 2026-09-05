@@ -79,7 +79,8 @@ identifier, pool address, event name and transaction hash lives behind
 | `app/web/` | The product frontend |
 | `docs/VERIFIED.md` | Provenance for every interface fact and address |
 | `docs/FINDINGS.md` | Integration feedback for the DreamDEX and Somnia teams |
-| `docs/LIVE_FIRE.json` | The recorded live-fire run, written by the harness |
+| `docs/LIVE_FIRE.json` | The recorded live-fire runs, written by the harness |
+| `docs/REDEMPTION.json` | The capital cycle closing: a won position turned back into collateral |
 
 ## Where the data comes from
 
@@ -128,7 +129,7 @@ Live and verified on Shannon:
 - orders priced against the live book, with NO derived as the complement of the
   YES side, and the successor market re-checked against the module before
   anything is signed
-- 74 contract tests, 21 unit tests for sizing and wallet scoping, 6 planner
+- 86 contract tests, 23 unit tests for sizing and wallet scoping, 6 planner
   tests against live chain, and a browser suite including a wallet that owns nothing
 
 Proven on chain:
@@ -143,27 +144,40 @@ Proven on chain:
   `docs/FRESH_WALLET.json`: it started with no account, created its own vault
   through the factory, was confirmed isolated from the author's, and activated a
   sequence
+- **the capital cycle closes.** One settlement drove a real order, the market that
+  order bought into settled in turn, and the winning position was redeemed back
+  into spendable collateral. On the deployed vault, in `docs/REDEMPTION.json`:
+  `StepArmed -> ResolutionSynced -> Triggered -> Placed -> ExposureReleased -> Redeemed`.
+  4,366,000 outcome tokens became $4.3660 of collateral against a $2.0000 order,
+  the balance moved $198.0732 -> $202.4392, and the position went to zero
+  (`0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34`)
 
 Not observed, and not claimed:
 
 - **Reactivity has never been seen to deliver to us.** Every execution so far
   needed the `syncResolution` backstop. We ruled out filter misconfiguration, a
-  subscription owner below the 32 SOM minimum, and a zero priority fee by
-  testing each; see `docs/FINDINGS.md`. Reactivity remains the intended primary
-  path, and the product does not pretend otherwise
+  subscription owner below the 32 SOM minimum, a zero priority fee, a low gas
+  limit, a reverting handler, and finally `isGuaranteed: false` — by subscribing
+  through the precompile's raw entry with `isGuaranteed: true` from a funded EOA,
+  which neither the Solidity helper nor the SDK exposes. The handler was still
+  never invoked, and the resolving block contained no transaction to the vault
+  and none from the precompile. See `docs/FINDINGS.md` and
+  `docs/REACTIVITY_EXPERIMENT.json`. We class this as an external limitation of
+  Reactivity delivery on Shannon rather than a fault in Sequence; it remains the
+  intended primary path, and the product does not pretend otherwise
 
 Deliberately not built yet:
 
-- redemption of settled positions, so won collateral is not yet recycled
-- the markets SDK as a runtime dependency. It is a dev dependency used to derive
-  and check ABIs; the app talks to the indexer and contracts directly
+- automatic redemption inside the resolution callback. Redemption is a separate
+  permissionless call on purpose: a settlement service having a bad day must
+  never be able to stop a sequence from trading
 
 ## Deployed addresses (Shannon testnet)
 
 | Contract | Address |
 | --- | --- |
-| SequenceVaultFactory | `0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc` |
-| SequenceVault (owner's) | `0x78dcAD22f904AE1cE156f4409D312C1438C93ef2` |
+| SequenceVaultFactory | `0xF492234a4b522D19dd76dBB435ad9471a652f950` |
+| SequenceVault (owner's) | `0x0185CA254C9e7b184b566e7037160334519cC9f6` |
 | OracleHub | `0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b` |
 | BinaryMarketsModule | `0x3ecC694Cef705358864a646142ac17A90E29e388` |
 | Test USDC | `0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E` |

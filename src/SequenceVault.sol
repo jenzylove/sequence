@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {SomniaEventHandler} from "@somnia-chain/reactivity-contracts/contracts/SomniaEventHandler.sol";
 import {SomniaExtensions} from "@somnia-chain/reactivity-contracts/contracts/interfaces/SomniaExtensions.sol";
 import {Verified} from "./Verified.sol";
-import {IBinaryMarketsModule, IBinaryPool, IBinaryMarket, IERC20} from "./IDreamDEX.sol";
+import {IBinaryMarketsModule, IBinaryPool, IBinaryMarket, IBinaryModuleRedeem, IOutcomeToken6909, IERC20} from "./IDreamDEX.sol";
 
 // SequenceVault
 // A capped strategy vault. Off-chain planner arms ONE step at a time; the vault
@@ -36,6 +36,9 @@ contract SequenceVault is SomniaEventHandler {
     error NoExposure(bytes32 marketId);
     error NotResolvedYet(bytes32 marketId);
     error UnknownMarket(bytes32 marketId);
+    error NotSettled(bytes32 marketId);
+    error NothingToRedeem(bytes32 marketId);
+    error RedeemFailed(bytes32 marketId, uint8 outcomeIdx);
 
     // ---- per-outcome actions ----
     // What the vault does when an outcome wins. The two buy values are the
@@ -118,6 +121,7 @@ contract SequenceVault is SomniaEventHandler {
     event ChainAdvanced(bytes32 indexed fromStepId, bytes32 indexed toStepId);
     event ExposureReleased(bytes32 indexed marketId, uint256 amount);
     event ResolutionSynced(bytes32 indexed marketId, uint256 questionId, address indexed by);
+    event Redeemed(bytes32 indexed marketId, uint8 outcomeIdx, uint256 tokens, uint256 collateral);
     event Skipped(bytes32 indexed stepId, bytes32 indexed marketId, string reason);
     event StepCancelled(bytes32 indexed stepId);
     event PausedSet(bool paused);
@@ -287,6 +291,64 @@ contract SequenceVault is SomniaEventHandler {
         uint256[] memory nums = voided ? new uint256[](0) : m.payoutNumerators();
         emit ResolutionSynced(marketId, questionId, msg.sender);
         _applyResolution(questionId, marketId, nums, voided);
+    }
+
+    /// Turn settled outcome positions back into collateral the vault can trade
+    /// with again. Without this a rolling strategy slowly converts its bankroll
+    /// into won positions it can never reuse.
+    ///
+    /// Permissionless, because the caller chooses nothing: the market is read
+    /// from the module, the outcome from the market itself, the amount from the
+    /// vault's own balance, and the collateral can only land in this vault.
+    /// There is no recipient argument to abuse.
+    ///
+    /// Deliberately its own function rather than part of the resolution
+    /// callback: a redemption that reverts must never be able to stop a
+    /// sequence from executing.
+    function redeemPosition(bytes32 marketId) external returns (uint256 collateralGained) {
+        (,,,,,,,, address market,, uint256 yesId, uint256 noId,,) = module.markets(marketId);
+        if (market == address(0)) revert UnknownMarket(marketId);
+
+        IBinaryMarket m = IBinaryMarket(market);
+        bool voided = m.isVoided();
+        if (!voided && !m.isResolved()) revert NotSettled(marketId);
+
+        IOutcomeToken6909 tokens = IOutcomeToken6909(m.outcomeToken());
+        // One operator approval covers every market on the singleton.
+        if (!tokens.isOperator(address(this), address(module))) {
+            tokens.setOperator(address(module), true);
+        }
+
+        uint256 before = collateral.balanceOf(address(this));
+
+        if (voided) {
+            // A voided market pays both sides, so both are redeemed.
+            _redeemSide(marketId, 0, yesId, tokens);
+            _redeemSide(marketId, 1, noId, tokens);
+        } else {
+            uint256[] memory nums = m.payoutNumerators();
+            uint8 win = _winner(nums, false);
+            if (win == type(uint8).max) revert NotSettled(marketId);
+            // Only the winning side is worth anything; the loser is left alone
+            // rather than burning gas on a redemption that returns nothing.
+            _redeemSide(marketId, win, win == 0 ? yesId : noId, tokens);
+        }
+
+        collateralGained = collateral.balanceOf(address(this)) - before;
+        if (collateralGained == 0) revert NothingToRedeem(marketId);
+        return collateralGained;
+    }
+
+    function _redeemSide(bytes32 marketId, uint8 outcomeIdx, uint256 tokenId, IOutcomeToken6909 tokens) internal {
+        uint256 amount = tokens.balanceOf(address(this), tokenId);
+        if (amount == 0) return;                       // nothing held on this side
+        uint256 before = collateral.balanceOf(address(this));
+        // operatorId and venueId are attribution only and may be zero.
+        try IBinaryModuleRedeem(address(module)).redeem(0, bytes32(0), marketId, outcomeIdx, amount) {
+            emit Redeemed(marketId, outcomeIdx, amount, collateral.balanceOf(address(this)) - before);
+        } catch {
+            revert RedeemFailed(marketId, outcomeIdx);
+        }
     }
 
     function _applyResolution(uint256 questionId, bytes32 marketId, uint256[] memory nums, bool voided) internal {

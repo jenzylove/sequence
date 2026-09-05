@@ -42,9 +42,11 @@ signal is the OracleHub `AnswerDelivered`. Outcome comes from the payout vector
 
 | What | Address / value |
 | --- | --- |
-| SequenceVaultFactory | `0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc` |
-| SequenceVault (author's, created by the factory) | `0x78dcAD22f904AE1cE156f4409D312C1438C93ef2` |
-| Reactivity subscription | `16022724` |
+| SequenceVaultFactory | `0xF492234a4b522D19dd76dBB435ad9471a652f950` |
+| SequenceVault (author's, created by the factory) | `0x0185CA254C9e7b184b566e7037160334519cC9f6` |
+| Reactivity subscription (vault-owned) | `16077958` |
+| Reactivity subscription (EOA-owned, `isGuaranteed: true` experiment) | `16072852` |
+| BinarySettlement (redemption is paid from here) | `0xbF4a49e0Dfd092e5FBE8E5761064C49533e6Ed23` |
 | Outcome token singleton (ERC-6909) | `0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9` |
 
 Subscription options in use, read back from the precompile via
@@ -52,9 +54,38 @@ Subscription options in use, read back from the precompile via
 vault, selector `0x53edf33d`, priorityFeePerGas 1 gwei, maxFeePerGas 40 gwei,
 gasLimit 10,000,000, isGuaranteed false.
 
+`isGuaranteed` cannot be set through `SomniaExtensions` or the SDK's
+`subscribe()`; both hardcode it to false. Subscription `16072852` was therefore
+created by calling the precompile's raw `subscribe` directly with
+`isGuaranteed: true`, owned by a funded EOA (62.29 SOM) rather than a contract,
+priorityFeePerGas 2 gwei and maxFeePerGas 60 gwei, pointed at the deployed vault.
+It read back correct on every field. The handler was still never invoked.
+
 `SomniaExtensions.SUBSCRIPTION_OWNER_MINIMUM_BALANCE` is 32 ether and the
 subscribing contract's balance drifts down over time, so the vault is funded to
 35 SOM rather than exactly 32. Falling under the minimum is silent.
+
+## Redemption, measured on chain
+
+`BinaryMarketsModule.redeem(uint32, bytes32, bytes32, uint8, uint256)` burns the
+caller's ERC-6909 outcome tokens and pays collateral. It requires the caller to
+have made the module an **operator** on the singleton — a per-owner flag, not a
+per-token allowance — so `SequenceVault` calls `setOperator` once and caches it.
+
+Measured redemption, tx
+`0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34`:
+
+| | |
+| --- | --- |
+| Market | `0x…13bc6` (BTC 1h), settlement `finalized`, `voided=false`, payouts `[0, 10000000]` |
+| Held before | 0 YES, 4,366,000 NO |
+| Redeemed | outcome index 1, 4,366,000 tokens |
+| Collateral | $198.0732 -> $202.4392, gained $4.3660 |
+| Held after | 0 YES, 0 NO |
+
+A payout numerator of `10000000` against 4,366,000 tokens returned exactly
+4,366,000 collateral units, so the numerator denominator is `1e7` and a winning
+token pays 1 collateral unit.
 
 ## Order units (measured, not assumed)
 

@@ -391,6 +391,25 @@ export const vaultAbi = [
   },
   {
     "type": "function",
+    "name": "redeemPosition",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "collateralGained",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "releaseExposure",
     "inputs": [
       {
@@ -802,6 +821,37 @@ export const vaultAbi = [
   },
   {
     "type": "event",
+    "name": "Redeemed",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "outcomeIdx",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "tokens",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "collateral",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ResolutionSynced",
     "inputs": [
       {
@@ -1110,6 +1160,28 @@ export const vaultAbi = [
   },
   {
     "type": "error",
+    "name": "NotSettled",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NothingToRedeem",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "OnlyReactivityPrecompile",
     "inputs": []
   },
@@ -1117,6 +1189,22 @@ export const vaultAbi = [
     "type": "error",
     "name": "Paused",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RedeemFailed",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "outcomeIdx",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ]
   },
   {
     "type": "error",

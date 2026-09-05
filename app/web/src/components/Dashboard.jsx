@@ -5,7 +5,8 @@ import LimitDialog from "./LimitDialog.jsx";
 import { statusCopy, bucketFor, money, countdown, marketName } from "../lib/language.js";
 import { explainEvent } from "../lib/command.js";
 import { loadDrafts, removeDraft } from "../lib/store.js";
-import { cancelStep, syncResolution } from "../chain/vault.js";
+import { cancelStep, syncResolution, redeemPosition } from "../chain/vault.js";
+import { findClaimablePositions } from "../chain/positions.js";
 import { readMarketOnchain } from "../chain/module.js";
 
 const TABS = [
@@ -75,6 +76,31 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vault.status, active.length]);
+
+  // Won positions are outcome tokens, not cash. Until they are redeemed the
+  // bankroll is locked up in something that has already finished, so a rolling
+  // strategy quietly starves. Reads go through the markets SDK.
+  const [claimable, setClaimable] = useState([]);
+  useEffect(() => {
+    let live = true;
+    if (!vault.address) { setClaimable([]); return undefined; }
+    findClaimablePositions(vault.address)
+      .then((found) => { if (live) setClaimable(found); })
+      .catch(() => { if (live) setClaimable([]); });
+    return () => { live = false; };
+  }, [vault.address, vault.status, completed.length]);
+
+  const claim = async (position) => {
+    setBusy(position.marketId);
+    try {
+      await redeemPosition({
+        provider: wallet.provider, account: wallet.account,
+        vault: vault.address, marketId: position.marketId,
+      });
+      setClaimable(await findClaimablePositions(vault.address));
+      await vault.refresh();
+    } catch { /* surfaced by the next read */ } finally { setBusy(null); }
+  };
 
   const checkResult = async (step) => {
     setBusy(step.stepId);
@@ -225,9 +251,39 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
                   </div>
             )}
 
+            {tab === "completed" && claimable.length > 0 && (
+              <div className="mb-5 space-y-3">
+                <div className="micro-label">Money still tied up</div>
+                {claimable.map((p) => (
+                  <div key={p.marketId} className="sequence-row">
+                    <div>
+                      <div className="text-[12px] font-bold text-[#252229]">
+                        {p.question || marketName(p) || "Settled market"}
+                      </div>
+                      <div className="mt-1.5 text-[10px] text-[#817c86]">
+                        {p.worthless
+                          ? `This side did not win. Nothing to collect.`
+                          : p.voided
+                            ? `Market was voided. ${money(p.claimable)} comes back.`
+                            : `You were right. ${money(p.claimable)} is waiting to be collected.`}
+                      </div>
+                    </div>
+                    {p.worthless
+                      ? <span className="status-pill neutral">Closed</span>
+                      : <button
+                          onClick={() => claim(p)}
+                          disabled={busy === p.marketId}
+                          className="soft-button bg-[#111014] px-4 py-2 text-white disabled:opacity-50">
+                          {busy === p.marketId ? "Collecting…" : "Collect"}
+                        </button>}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {tab === "completed" && (
               completed.length === 0
-                ? <Empty>Nothing has finished yet. Once a market settles, the result lands here.</Empty>
+                ? (claimable.length > 0 ? null : <Empty>Nothing has finished yet. Once a market settles, the result lands here.</Empty>)
                 : <div className="space-y-3">
                     {completed.map((s) => {
                       const copy = statusCopy(s.statusLabel);

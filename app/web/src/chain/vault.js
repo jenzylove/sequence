@@ -186,6 +186,11 @@ export const queueStep = (opts) => sendVaultTx({ ...opts, functionName: "queueSt
 // outcome from the market contract itself.
 export const syncResolution = (opts) => sendVaultTx({ ...opts, functionName: "syncResolution", args: [opts.marketId] });
 
+// Turn a settled winning position back into collateral the sequence can reuse.
+// Permissionless like syncResolution: the vault owns the tokens, so the caller
+// gains nothing by triggering it.
+export const redeemPosition = (opts) => sendVaultTx({ ...opts, functionName: "redeemPosition", args: [opts.marketId] });
+
 export const cancelStep = (opts) => sendVaultTx({ ...opts, functionName: "cancelStep", args: [opts.stepId] });
 export const setPaused = (opts) => sendVaultTx({ ...opts, functionName: "setPaused", args: [opts.paused] });
 

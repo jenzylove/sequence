@@ -80,12 +80,26 @@ plausible cause:
 | Zero priority fee starving the callback | resubscribed with priorityFeePerGas 1 gwei, maxFeePerGas 40 gwei | failed at both |
 | Gas limit too low | 10,000,000, far above what the handler uses | not the cause |
 | Handler reverting | no vault event, no state change, and the same call path succeeds when driven by `syncResolution` | no evidence of a revert |
+| `isGuaranteed: false` dropping the callback | subscribed again with `isGuaranteed: true` via the precompile's raw `subscribe`, owned by a funded EOA (62.29 SOM), 2 gwei priority, 60 gwei max, pointed at the already-deployed vault — subscription `16072852` | failed |
 
-`isGuaranteed` is `false`, and the library's `SubscriptionOptions` struct exposes
-no way to set it, so a callback dropped when a block is full cannot be ruled out
-from the outside. `getSubscriptionInfo` also returns the subscription owner as
-the zero address for every subscription we created from a contract, which we
-could not explain.
+Neither `SomniaExtensions`' Solidity options struct nor the TypeScript SDK's
+`subscribe()` exposes `isGuaranteed`; both hardcode it to `false`. Only the
+precompile's raw `subscribe` takes it, so we called that directly. The record
+read back with `isGuaranteed: true`, an EOA owner rather than the zero address
+our contract-created subscriptions report, and every other field correct. The
+handler was still never invoked.
+
+The clearest single piece of evidence is the resolving block itself. The
+`AnswerDelivered` we were subscribed to was emitted in tx
+`0xbcdeb11d7132df8adc2f3072f39fc1f7a50d469a8ba5ecca9fe54a6c086cd9a8`, block
+`479937799`. That block contains 10 transactions: **none to the vault, and none
+from the precompile**. The dispatch did not fail, it did not happen. Full record
+in `docs/REACTIVITY_EXPERIMENT.json`.
+
+`getSubscriptionInfo` also returns the subscription owner as the zero address for
+every subscription created from a contract, which we could not explain and which
+makes the owner-balance requirement impossible to reason about from inside a
+contract.
 
 **Why it matters.** A product whose promise is "it runs without you" cannot rest
 on a delivery that silently does not arrive. There is no revert, no event and no
@@ -98,7 +112,9 @@ application notice and say so. A documented catch-up entry for a subscriber that
 missed a block would be better still.
 
 **What we did about it.** Reactivity remains the primary path and we do not claim
-to have observed it working. `syncResolution(bytes32 marketId)` is the backstop:
+to have observed it working. Having exhausted every documented lever, including
+the one the tooling does not expose, we classify this as an external limitation
+of Reactivity delivery on Shannon rather than a fault in Sequence. `syncResolution(bytes32 marketId)` is the backstop:
 permissionless, takes only a market id, reads the outcome from the market
 contract itself, and runs the identical state machine behind the same
 idempotency key so a late delivery cannot double-fire. With it, a stuck sequence

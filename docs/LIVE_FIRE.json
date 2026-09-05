@@ -1,125 +1,141 @@
 {
   "runs": [
     {
-      "note": "The proven run. Reactivity did not deliver, so the permissionless syncResolution backstop carried it. Reconstructed from the transaction receipt; see docs/FILL_EVIDENCE.json.",
-      "vault": "0xe0e08329A28347568E56e8184DbC7efDE8c7B2d6",
-      "stepId": "0x85b14dbfb09edbe3182ab2feba11544834e32f0ed8a7e73418804cd1bef86532",
-      "trigger": {
-        "name": "BTC 5m",
-        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013774"
-      },
-      "successor": {
-        "name": "BTC 1h",
-        "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5"
-      },
-      "deliveredBy": "syncResolution (permissionless backstop) - NOT Reactivity",
-      "syncTx": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
-      "explorer": "https://shannon-explorer.somnia.network/tx/0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2",
-      "collateral": {
-        "movedToPool": "2000000",
-        "returnedToVault": "1920000",
-        "netSpent": "80000",
-        "readable": "$2.0000 out, $1.9200 back, net $0.0800",
-        "moves": [
-          {
-            "direction": "out",
-            "to": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
-            "amount": "2000000"
-          },
-          {
-            "direction": "in",
-            "from": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
-            "amount": "1920000"
-          }
-        ]
-      },
-      "order": {
-        "orderId": "110680464442257339085",
-        "side": "BUY_NO",
-        "notionalCommitted": "2000000",
-        "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5"
-      },
-      "timeline": [
-        {
-          "event": "ResolutionSynced",
-          "args": {
-            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013774",
-            "by": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
-            "questionId": "23208120061106271573776217556395916389417441623348050582556804712641395658075"
-          },
-          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2"
-        },
-        {
-          "event": "Triggered",
-          "args": {
-            "stepId": "0x85b14dbfb09edbe3182ab2feba11544834e32f0ed8a7e73418804cd1bef86532",
-            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013774",
-            "questionId": "23208120061106271573776217556395916389417441623348050582556804712641395658075",
-            "voided": false,
-            "winningOutcome": 1
-          },
-          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2"
-        },
-        {
-          "event": "Placed",
-          "args": {
-            "stepId": "0x85b14dbfb09edbe3182ab2feba11544834e32f0ed8a7e73418804cd1bef86532",
-            "pool": "0x10f7624A739d86f77e0384e45AbBBb25632509b5",
-            "kind": 2,
-            "orderId": "110680464442257339085",
-            "notional": "2000000"
-          },
-          "txHash": "0xe8a0c03154cf73d30e59faee290876475acb38a7eb90c4b25f47391a607df4f2"
-        }
-      ],
-      "finalStatus": "PLACED",
-      "outcome": "placed",
-      "claim": "The pool accepted the bounded order and $0.0800 of collateral was consumed net, which is consistent with a fill. The vault cannot observe fill quantity from inside the callback, so no fill size is asserted here beyond the collateral delta."
-    },
-    {
       "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
       "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
       "vault": "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
       "factory": "0x43c7ce4E7eFAAa5D7452334Cc3FB973CEe1611cc",
-      "subscriptionId": "16022724",
-      "stepId": "0x720ce114dcdaa082ce976382fc4d3b49b077c3c1bb776e84bcea9a3fa63aa7e3",
+      "subscriptionId": "0",
+      "stepId": "0x0111fa5cac0aba14a3a68a51377893be4b9a90cf20896a5ef364595116326fdb",
       "trigger": {
-        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013937",
-        "name": "ETH 5m",
-        "expiry": 1788550800,
-        "question": "Pricefeed test: will ETH/USDC's price be at or above 2457.34 at unix time 1788550800?"
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bd0",
+        "name": "BTC 5m",
+        "expiry": 1788567000,
+        "question": "Pricefeed test: will BTC/USDC's price be at or above 79672.85 at unix time 1788567000?"
       },
       "successor": {
-        "marketId": "0x00000000000000000000000000000000000000000000000000000000000136e1",
-        "name": "ETH 4h",
-        "pool": "0x8b204a7db0d08f7d074360e063bcd4e71e837651",
-        "expiry": 1788552000
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc6",
+        "name": "BTC 1h",
+        "pool": "0xd459f27bfd82a0c4ce0c3ebc28cc699d81fd959f",
+        "expiry": 1788570000
       },
       "order": {
-        "price": "999000",
-        "quantity": "2002000",
-        "notional": "1999998",
+        "price": "467000",
+        "quantity": "4282000",
+        "notional": "1999694",
         "cap": "2000000"
       },
-      "armedAt": "2026-09-04T19:36:19.546Z",
-      "armedTx": "0xef2383024a103ca9def34775f3da239883874fb80e2117607a39454bf0e1d4a8",
-      "armedBlock": "479774602",
+      "armedAt": "2026-09-05T00:05:16.752Z",
+      "armedTx": "0x123ace32e860cea5d0ca3278f9c6b81eef3e440f71366ed74548177da09b326d",
+      "armedBlock": "479935944",
       "timeline": [
         {
           "event": "StepArmed",
           "args": {
-            "stepId": "0x720ce114dcdaa082ce976382fc4d3b49b077c3c1bb776e84bcea9a3fa63aa7e3",
-            "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013937",
-            "pool": "0x8b204A7db0d08f7d074360E063bcD4e71e837651"
+            "stepId": "0x0111fa5cac0aba14a3a68a51377893be4b9a90cf20896a5ef364595116326fdb",
+            "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013bd0",
+            "pool": "0xd459F27bFd82A0c4Ce0C3ebC28Cc699D81Fd959F"
           },
-          "blockNumber": "479774602",
-          "txHash": "0xef2383024a103ca9def34775f3da239883874fb80e2117607a39454bf0e1d4a8",
-          "logIndex": 0,
-          "at": "2026-09-04T19:36:19.718Z"
+          "blockNumber": "479935944",
+          "txHash": "0x123ace32e860cea5d0ca3278f9c6b81eef3e440f71366ed74548177da09b326d",
+          "logIndex": 2,
+          "at": "2026-09-05T00:05:16.944Z"
         }
       ],
       "outcome": "waiting",
       "finalStatus": "ARMED"
+    },
+    {
+      "note": "Reconstructed from chain after the watcher lost its connection. Every field is read from the vault's own logs.",
+      "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "factory": "0xF492234a4b522D19dd76dBB435ad9471a652f950",
+      "stepId": "0x76ca85dc94d2cf54f2949926439a6bde354f951f3194bdda891eef863f6ebde8",
+      "armedTx": "0x3a92978d189175f8e1e98fae1183ec3af1963d97892e206b697c57b1dd73d64d",
+      "armedBlock": "479954156",
+      "trigger": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013c18"
+      },
+      "successor": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc6",
+        "pool": "0xd459F27bFd82A0c4Ce0C3ebC28Cc699D81Fd959F"
+      },
+      "advancedBy": "syncResolution",
+      "timeline": [
+        {
+          "event": "StepArmed",
+          "args": {
+            "stepId": "0x76ca85dc94d2cf54f2949926439a6bde354f951f3194bdda891eef863f6ebde8",
+            "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013c18",
+            "pool": "0xd459F27bFd82A0c4Ce0C3ebC28Cc699D81Fd959F"
+          },
+          "blockNumber": "479954156",
+          "txHash": "0x3a92978d189175f8e1e98fae1183ec3af1963d97892e206b697c57b1dd73d64d",
+          "logIndex": 24
+        },
+        {
+          "event": "ResolutionSynced",
+          "args": {
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013c18",
+            "by": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+            "questionId": "99178962550891372342373415149621975457642575261671179272427871084613779176942"
+          },
+          "blockNumber": "479957446",
+          "txHash": "0x07adeb99a88de732c7b4bf191472679925421f4626aad53f9021fa79a5372a94",
+          "logIndex": 0
+        },
+        {
+          "event": "Triggered",
+          "args": {
+            "stepId": "0x76ca85dc94d2cf54f2949926439a6bde354f951f3194bdda891eef863f6ebde8",
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013c18",
+            "questionId": "99178962550891372342373415149621975457642575261671179272427871084613779176942",
+            "voided": false,
+            "winningOutcome": 1
+          },
+          "blockNumber": "479957446",
+          "txHash": "0x07adeb99a88de732c7b4bf191472679925421f4626aad53f9021fa79a5372a94",
+          "logIndex": 1
+        },
+        {
+          "event": "Placed",
+          "args": {
+            "stepId": "0x76ca85dc94d2cf54f2949926439a6bde354f951f3194bdda891eef863f6ebde8",
+            "pool": "0xd459F27bFd82A0c4Ce0C3ebC28Cc699D81Fd959F",
+            "kind": 2,
+            "orderId": "110680464442257315396",
+            "notional": "1999628"
+          },
+          "blockNumber": "479957446",
+          "txHash": "0x07adeb99a88de732c7b4bf191472679925421f4626aad53f9021fa79a5372a94",
+          "logIndex": 10
+        },
+        {
+          "event": "ExposureReleased",
+          "args": {
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc6",
+            "amount": "1999628"
+          },
+          "blockNumber": "479968795",
+          "txHash": "0x9ecbf6ba8a3fe87feb413f93f22ade64cc92f5850b28a0cf160ab8d4089a065b",
+          "logIndex": 26
+        },
+        {
+          "event": "Redeemed",
+          "args": {
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc6",
+            "outcomeIdx": 1,
+            "tokens": "4366000",
+            "collateral": "4366000"
+          },
+          "blockNumber": "480196149",
+          "txHash": "0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34",
+          "logIndex": 30
+        }
+      ],
+      "finalStatus": "PLACED",
+      "outcome": "placed",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0x3a92978d189175f8e1e98fae1183ec3af1963d97892e206b697c57b1dd73d64d",
+      "recordedAt": "2026-09-05T07:21:36.517Z"
     }
   ]
 }

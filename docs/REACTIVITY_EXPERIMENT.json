@@ -1,0 +1,86 @@
+{
+  "subscription": {
+    "note": "A guaranteed subscription owned by an EOA, pointing at the already-deployed SequenceVault. No contract change.",
+    "subscriptionId": "16072852",
+    "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+    "handler": "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
+    "emitter": "0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b",
+    "topic0": "0x981074cb1e0ea7eac4cbc8c4c9ddbef8b964373e7e8cd0904c8e0951c4430541",
+    "handlerFunctionSelector": "0x53edf33d",
+    "priorityFeePerGas": "2000000000",
+    "maxFeePerGas": "60000000000",
+    "gasLimit": "10000000",
+    "isGuaranteed": true,
+    "isCoalesced": false,
+    "ownerBalanceWei": "62287511330000000000",
+    "subscribeTx": "0x8ec1e1074f15403c7599849efc4e2f082e2c37bd8da0a607a6d11121759650fe",
+    "createdAt": "2026-09-05T00:04:14.253Z",
+    "checksFailed": 0,
+    "contrast": "Sequence's own subscriptions were created through SomniaExtensions (Solidity) and the SDK's subscribe(); both hardcode isGuaranteed to false and are owned by the vault contract. This one is EOA-owned with isGuaranteed true."
+  },
+  "result": {
+    "question": "Under a guaranteed, EOA-owned subscription, does OracleHub's AnswerDelivered invoke the SequenceVault handler?",
+    "answer": "No. The event was emitted and matched the subscription's filter; the handler was never called.",
+    "subscription": {
+      "note": "A guaranteed subscription owned by an EOA, pointing at the already-deployed SequenceVault. No contract change.",
+      "subscriptionId": "16072852",
+      "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+      "handler": "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
+      "emitter": "0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b",
+      "topic0": "0x981074cb1e0ea7eac4cbc8c4c9ddbef8b964373e7e8cd0904c8e0951c4430541",
+      "handlerFunctionSelector": "0x53edf33d",
+      "priorityFeePerGas": "2000000000",
+      "maxFeePerGas": "60000000000",
+      "gasLimit": "10000000",
+      "isGuaranteed": true,
+      "isCoalesced": false,
+      "ownerBalanceWei": "62287511330000000000",
+      "subscribeTx": "0x8ec1e1074f15403c7599849efc4e2f082e2c37bd8da0a607a6d11121759650fe",
+      "createdAt": "2026-09-05T00:04:14.253Z",
+      "checksFailed": 0,
+      "contrast": "Sequence's own subscriptions were created through SomniaExtensions (Solidity) and the SDK's subscribe(); both hardcode isGuaranteed to false and are owned by the vault contract. This one is EOA-owned with isGuaranteed true."
+    },
+    "armedRun": {
+      "vault": "0x78dcAD22f904AE1cE156f4409D312C1438C93ef2",
+      "stepId": "0x0111fa5cac0aba14a3a68a51377893be4b9a90cf20896a5ef364595116326fdb",
+      "armedTx": "0x123ace32e860cea5d0ca3278f9c6b81eef3e440f71366ed74548177da09b326d",
+      "armedBlock": "479935944",
+      "triggerMarket": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bd0",
+        "name": "BTC 5m",
+        "expiry": 1788567000,
+        "question": "Pricefeed test: will BTC/USDC's price be at or above 79672.85 at unix time 1788567000?"
+      }
+    },
+    "answerDelivered": {
+      "txHash": "0xbcdeb11d7132df8adc2f3072f39fc1f7a50d469a8ba5ecca9fe54a6c086cd9a8",
+      "blockNumber": "479937799",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0xbcdeb11d7132df8adc2f3072f39fc1f7a50d469a8ba5ecca9fe54a6c086cd9a8",
+      "topic0": "0x22960c862fa88c63ef5018e9c368c195436812a7929c6ce86d08c95164b0e399",
+      "matchesSubscriptionFilter": false
+    },
+    "resolvingBlock": {
+      "blockNumber": "479937799",
+      "transactionsInBlock": 10,
+      "transactionsToTheVault": 0,
+      "transactionsFromThePrecompile": 0
+    },
+    "vaultAfter": {
+      "stepStatus": "ARMED",
+      "outstandingNotional": "0",
+      "eventsEmittedSinceArming": 1,
+      "eventNames": "see docs/LIVE_FIRE.json"
+    },
+    "ruledOut": [
+      "filter: topic0, emitter, handler, selector and wildcards read back correct from the precompile",
+      "owner: the subscribing EOA, not the zero address that our contract-created subscriptions report",
+      "funding: owner held 62.29 SOM against a 32 SOM minimum",
+      "priority fee: 2 gwei, with maxFeePerGas 60 gwei",
+      "gas limit: 10,000,000, far above what the handler needs",
+      "isGuaranteed: true, the documented setting for delivery regardless of block inclusion distance",
+      "handler revert: the same code path succeeds when driven by syncResolution in the same conditions"
+    ],
+    "conclusion": "With every documented lever set correctly, including the guaranteed flag that neither SomniaExtensions nor the SDK's subscribe() exposes, the handler is still not invoked. We classify this as an external limitation of Reactivity delivery on Shannon rather than a fault in Sequence. Reactivity remains the intended primary path; syncResolution is the permissionless backstop that makes a stalled sequence recoverable.",
+    "capturedAt": "2026-09-05T00:15:05.500Z"
+  }
+}
