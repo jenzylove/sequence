@@ -160,11 +160,15 @@ Not observed, and not claimed:
   limit, a reverting handler, and finally `isGuaranteed: false` — by subscribing
   through the precompile's raw entry with `isGuaranteed: true` from a funded EOA,
   which neither the Solidity helper nor the SDK exposes. The handler was still
-  never invoked, and the resolving block contained no transaction to the vault
-  and none from the precompile. See `docs/FINDINGS.md` and
-  `docs/REACTIVITY_EXPERIMENT.json`. We class this as an external limitation of
-  Reactivity delivery on Shannon rather than a fault in Sequence; it remains the
-  intended primary path, and the product does not pretend otherwise
+  never invoked under any configuration we could set. An earlier claim here cited
+  a specific resolving block as proof; that claim was withdrawn after independent
+  review found the evidence harness had used an event filter viem silently
+  ignores, so the log it cited was a `DrainContinuation`, not an
+  `AnswerDelivered`. The harness now validates emitter, topic0, the exact market
+  id and decoding before any verdict is written, and establishes dispatch from a
+  full call trace rather than top-level transactions. See `docs/FINDINGS.md` and
+  `docs/REACTIVITY_EXPERIMENT.json` for the current, validated state. Reactivity
+  remains the intended primary path, and the product does not pretend otherwise
 
 Deliberately not built yet:
 

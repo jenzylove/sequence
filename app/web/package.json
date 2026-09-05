@@ -14,7 +14,7 @@
     "repair": "node scripts/repair-control-bytes.mjs",
     "audit": "node scripts/audit-ia.mjs",
     "verify:three": "node scripts/verify-three.mjs",
-    "test:units": "node --test src/sizing.test.mjs src/scoping.test.mjs",
+    "test:units": "node --test --experimental-test-module-mocks src/sizing.test.mjs src/scoping.test.mjs src/positions.test.mjs",
     "check:amount": "node scripts/check-amount.mjs",
     "fresh": "node scripts/fresh-wallet.mjs"
   },

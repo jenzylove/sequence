@@ -20,6 +20,7 @@ import {
   marketKey,
 } from "@somnia-chain/markets-sdk";
 import { publicClient, readVaultEvents } from "./vault.js";
+import { vaultAbi } from "./abi.js";
 import { fetchResolvedMarkets } from "./markets.js";
 
 export const SDK_ADDRESSES = SOMNIA_TESTNET_ADDRESSES;
@@ -81,20 +82,40 @@ export async function readOutcomeBalances(vault, { yesId, noId, outcomeToken }) 
   return { yes, no };
 }
 
-// Which markets a vault has actually traded, from its own Placed events.
+// Which markets a vault actually holds positions in, from its own events.
 //
-// This is the right scan set. A vault can only hold outcome tokens in markets it
-// bought into, and a global "recently settled" list silently misses a position
-// the moment the strategy has been idle longer than the list is long.
-export async function tradedMarketIds(vault) {
-  const events = await readVaultEvents({ vault });
-  const ids = [];
+// The subtlety that matters: a step *watches* one market and *trades into*
+// another. `Triggered.marketId` is the trigger, and outcome tokens are never
+// held there - they are held in the successor. Reading the trigger would send
+// the Finished tab looking in the wrong market and quietly miss a position that
+// is genuinely redeemable.
+//
+// Three sources, all successor-side: the step a `Placed` event points at,
+// and the market ids carried directly by `ExposureReleased` and `Redeemed`.
+export async function tradedMarketIds(vault, { fromBlock } = {}) {
+  const client = publicClient();
+  const events = await readVaultEvents({ vault, fromBlock });
+  const markets = [];
+  const remember = (id) => {
+    if (id && !/^0x0+$/.test(id) && !markets.includes(id)) markets.push(id);
+  };
+
+  const stepIds = [];
   for (const e of events) {
-    const id = e.args?.marketId;
-    if (!id) continue;
-    if ((e.name === "Placed" || e.name === "Triggered") && !ids.includes(id)) ids.push(id);
+    if (e.name === "Placed" && e.args?.stepId && !stepIds.includes(e.args.stepId)) stepIds.push(e.args.stepId);
+    // These two already name the market the position lives in.
+    if (e.name === "ExposureReleased" || e.name === "Redeemed") remember(e.args?.marketId);
   }
-  return ids;
+
+  for (const stepId of stepIds) {
+    try {
+      const step = await client.readContract({
+        address: vault, abi: vaultAbi, functionName: "steps", args: [stepId],
+      });
+      remember(step.successorMarketId ?? step[10]);
+    } catch { /* a step we cannot read tells us nothing */ }
+  }
+  return markets;
 }
 
 // Everything a vault could redeem right now.
@@ -103,11 +124,13 @@ export async function tradedMarketIds(vault) {
 // omitted, because a trader wants to know it is there and finished.
 export async function findClaimablePositions(vault, { limit = 25, marketIds } = {}) {
   if (!vault) return [];
-  // Prefer the vault's own trading history; fall back to the settled feed only
-  // when there is no history to go on.
-  let candidates = marketIds ?? (await tradedMarketIds(vault).catch(() => []));
-  if (!candidates.length) candidates = (await fetchResolvedMarkets(limit)).map((m) => m.marketId);
-  const meta = new Map((await fetchResolvedMarkets(limit).catch(() => [])).map((m) => [m.marketId, m]));
+  // Union of both sources. The vault's own history is precise but only reaches
+  // as far back as the node will serve logs; the settled feed is broad but only
+  // covers what settled recently. Neither alone is enough.
+  const settled = await fetchResolvedMarkets(limit).catch(() => []);
+  const meta = new Map(settled.map((m) => [m.marketId, m]));
+  const traded = marketIds ?? (await tradedMarketIds(vault).catch(() => []));
+  const candidates = [...new Set([...traded, ...settled.map((m) => m.marketId)])];
   const found = [];
 
   for (const marketId of candidates) {

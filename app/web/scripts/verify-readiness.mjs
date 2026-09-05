@@ -216,11 +216,49 @@ add("18", "proof", fullCycle ? "OK" : "OPEN",
 const reactive = (fire?.runs || []).find((r) =>
   (r.timeline || []).some((t) => t.event === "Triggered")
   && !(r.timeline || []).some((t) => t.event === "ResolutionSynced"));
+let reactivityVerdict = null;
+try { reactivityVerdict = JSON.parse(src("docs/REACTIVITY_EXPERIMENT.json")).result?.verdict ?? null; } catch { /* none */ }
 add("17", "reactivity", reactive ? "OK" : "OPEN",
   reactive
     ? "a settlement reached the vault through Reactivity with no manual sync"
-    : "every observed execution needed syncResolution; Reactivity delivering on its own has NOT been observed",
-  reactive ? null : "keep Reactivity as the primary path and say plainly that it has not been seen to deliver");
+    : reactivityVerdict === "NO_DISPATCH_OBSERVED"
+      ? "a validated AnswerDelivered matching the subscription produced no call to the vault at any call depth; classified as an external delivery limitation"
+      : reactivityVerdict === "INCONCLUSIVE" || reactivityVerdict === null
+        ? "Reactivity delivery is UNRESOLVED: no validated matching AnswerDelivered has been captured yet, so neither success nor failure is established"
+        : `Reactivity experiment verdict: ${reactivityVerdict}`,
+  reactive ? null : "run scripts/reactivity-evidence.mjs against a run armed under a live guaranteed subscription");
+
+// Evidence files are read by this gate, so they must never disagree with
+// themselves. A verdict written next to a validation that failed, or a summary
+// that says unproven next to a successful proof, is a harness bug and is treated
+// as one — it blocks rather than being quietly tolerated.
+const inconsistencies = [];
+try {
+  const exp = JSON.parse(src("docs/REACTIVITY_EXPERIMENT.json"));
+  const r = exp.result;
+  if (r) {
+    const validated = r.answerDelivered?.allChecksPassed === true;
+    const failedChecks = (r.answerDelivered?.validation || []).filter((c) => !c.pass);
+    if (r.verdict && r.verdict !== "INCONCLUSIVE" && !validated) {
+      inconsistencies.push("REACTIVITY_EXPERIMENT.json states a verdict without a validated AnswerDelivered");
+    }
+    if (failedChecks.length && r.verdict && r.verdict !== "INCONCLUSIVE") {
+      inconsistencies.push(`REACTIVITY_EXPERIMENT.json states a verdict while ${failedChecks.length} validation check(s) failed`);
+    }
+  }
+} catch { /* no experiment recorded */ }
+try {
+  const red = JSON.parse(src("docs/REDEMPTION.json"));
+  if (red.proof && red.summary && red.summary.proven !== true
+      && BigInt(red.proof.collateralGained || "0") > 0n) {
+    inconsistencies.push("REDEMPTION.json holds a successful proof but a summary that says unproven");
+  }
+} catch { /* none */ }
+add("19", "evidence", inconsistencies.length === 0 ? "OK" : "BLOCKED",
+  inconsistencies.length === 0
+    ? "evidence files agree with themselves; no verdict rests on a failed validation"
+    : inconsistencies.join("; "),
+  inconsistencies.length === 0 ? null : "fix the harness that wrote the contradictory state");
 
 const backstop = /function syncResolution/.test(vaultSol);
 add("16", "robustness", backstop ? "OK" : "BLOCKED",

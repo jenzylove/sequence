@@ -148,9 +148,14 @@ async function arm() {
 
 // ---------------------------------------------------------------- watch
 async function watch(all) {
-  const runs = all.runs.filter((r) => !["PLACED", "SKIPPED", "EXPIRED", "CANCELLED"].includes(r.finalStatus));
-  if (runs.length === 0) { say("every recorded run has already reached a final state"); return all; }
-  const vault = runs[0].vault;
+  // Only runs on the vault that is currently deployed. An old run left unfinished
+  // against a previous deployment would otherwise decide which contract we watch,
+  // and we would sit reading logs from a vault nothing is armed on.
+  const runs = all.runs.filter((r) =>
+    !["PLACED", "SKIPPED", "EXPIRED", "CANCELLED"].includes(r.finalStatus)
+    && r.vault?.toLowerCase() === SHANNON.vault.toLowerCase());
+  if (runs.length === 0) { say("no unfinished run on the deployed vault"); return all; }
+  const vault = SHANNON.vault;
   const STATUS = ["NONE", "ARMED", "WAITING", "TRIGGERED", "PLACED", "SKIPPED", "EXPIRED", "CANCELLED", "PENDING"];
 
   say(`\nwatching ${runs.length} armed run(s) on ${vault}`);

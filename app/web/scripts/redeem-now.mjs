@@ -84,6 +84,20 @@ all.proof = {
   blockNumber: receipt.blockNumber.toString(),
   redeemedAt: new Date().toISOString(),
 };
+// The summary is derived from the proof, never left over from an earlier run.
+// An evidence file that says `proven: false` next to a successful redemption is
+// worse than no evidence at all, because it cannot be trusted either way.
+all.summary = {
+  proven: BigInt(all.proof.collateralGained) > 0n
+    && all.proof.heldAfter.yes === "0" && all.proof.heldAfter.no === "0",
+  note: all.proof.note,
+  vault: all.proof.vault,
+  marketId: all.proof.marketId,
+  collateralGained: all.proof.collateralGained,
+  txHash: all.proof.txHash,
+  attemptsRecorded: (all.attempts || []).length,
+  supersedes: "attempts above are the search for a winning position; the proof is what was redeemed",
+};
 writeFileSync(evidencePath, JSON.stringify(all, null, 2) + "\n");
 say("\nwritten to docs/REDEMPTION.json");
 process.exit(0);

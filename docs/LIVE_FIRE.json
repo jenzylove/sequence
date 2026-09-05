@@ -40,10 +40,72 @@
           "txHash": "0x123ace32e860cea5d0ca3278f9c6b81eef3e440f71366ed74548177da09b326d",
           "logIndex": 2,
           "at": "2026-09-05T00:05:16.944Z"
+        },
+        {
+          "event": "ResolutionSynced",
+          "args": {
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bd0",
+            "by": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+            "questionId": "76695020280131491640659099458407789906661360193658020060854921113277601805910"
+          },
+          "blockNumber": "479942064",
+          "txHash": "0xc4c6d6f79db85946ca77f38df34c24b5b06234fed3db1689ed693959c7161ad1",
+          "logIndex": 36,
+          "at": "2026-09-05T07:55:26.360Z"
+        },
+        {
+          "event": "Triggered",
+          "args": {
+            "stepId": "0x0111fa5cac0aba14a3a68a51377893be4b9a90cf20896a5ef364595116326fdb",
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bd0",
+            "questionId": "76695020280131491640659099458407789906661360193658020060854921113277601805910",
+            "voided": false,
+            "winningOutcome": 0
+          },
+          "blockNumber": "479942064",
+          "txHash": "0xc4c6d6f79db85946ca77f38df34c24b5b06234fed3db1689ed693959c7161ad1",
+          "logIndex": 37,
+          "at": "2026-09-05T07:55:26.361Z"
+        },
+        {
+          "event": "PlacementRejected",
+          "args": {
+            "stepId": "0x0111fa5cac0aba14a3a68a51377893be4b9a90cf20896a5ef364595116326fdb",
+            "pool": "0xd459F27bFd82A0c4Ce0C3ebC28Cc699D81Fd959F",
+            "kind": 0
+          },
+          "blockNumber": "479942064",
+          "txHash": "0xc4c6d6f79db85946ca77f38df34c24b5b06234fed3db1689ed693959c7161ad1",
+          "logIndex": 38,
+          "at": "2026-09-05T07:55:26.362Z"
+        },
+        {
+          "event": "Skipped",
+          "args": {
+            "stepId": "0x0111fa5cac0aba14a3a68a51377893be4b9a90cf20896a5ef364595116326fdb",
+            "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bd0",
+            "reason": "order-rejected"
+          },
+          "blockNumber": "479942064",
+          "txHash": "0xc4c6d6f79db85946ca77f38df34c24b5b06234fed3db1689ed693959c7161ad1",
+          "logIndex": 39,
+          "at": "2026-09-05T07:55:26.362Z"
+        },
+        {
+          "event": "Recovered",
+          "args": {
+            "token": "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
+            "amount": "199920000"
+          },
+          "blockNumber": "479952228",
+          "txHash": "0x4c3d265e9c7739c267180894bae79a570aece382f1853a52cfc23aafdd7d1a76",
+          "logIndex": 2,
+          "at": "2026-09-05T07:55:28.340Z"
         }
       ],
-      "outcome": "waiting",
-      "finalStatus": "ARMED"
+      "outcome": "skipped: order-rejected",
+      "finalStatus": "SKIPPED",
+      "settledAt": "2026-09-05T07:56:28.074Z"
     },
     {
       "note": "Reconstructed from chain after the watcher lost its connection. Every field is read from the vault's own logs.",
@@ -136,6 +198,38 @@
       "outcome": "placed",
       "explorer": "https://shannon-explorer.somnia.network/tx/0x3a92978d189175f8e1e98fae1183ec3af1963d97892e206b697c57b1dd73d64d",
       "recordedAt": "2026-09-05T07:21:36.517Z"
+    },
+    {
+      "note": "Live fire: one real DreamDEX settlement driving one real Sequence action.",
+      "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+      "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "factory": "0xF492234a4b522D19dd76dBB435ad9471a652f950",
+      "subscriptionId": "16077958",
+      "stepId": "0xa48d6ec88685711347798d411a3ef1993a0d5dc89ae100c5eb832415953da878",
+      "trigger": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013fc7",
+        "name": "ETH 1h",
+        "expiry": 1788595200,
+        "question": "ETH closes at or above its opening price"
+      },
+      "successor": {
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc3",
+        "name": "ETH 1d",
+        "pool": "0x9887d318ffd0e385e6d3113ef78b9a664ab4d0cb",
+        "expiry": 1788652800
+      },
+      "order": {
+        "price": "672000",
+        "quantity": "2976000",
+        "notional": "1999872",
+        "cap": "2000000"
+      },
+      "armedAt": "2026-09-05T07:55:24.979Z",
+      "armedTx": "0x04707f13daa4003ce282b89230fcfa06fa777dd6037b6f4d85125e90c85952f0",
+      "armedBlock": "480217967",
+      "timeline": [],
+      "outcome": "waiting",
+      "finalStatus": "NONE"
     }
   ]
 }
