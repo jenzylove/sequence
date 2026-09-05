@@ -49,7 +49,10 @@ const placed = timeline.find((t) => t.event === "Placed");
 const skipped = timeline.find((t) => t.event === "Skipped");
 
 const all = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { runs: [] };
-if (all.runs.some((r) => r.stepId === stepId)) { say("already recorded"); process.exit(0); }
+// Refresh rather than skip: a run written by the watcher before it lost its
+// connection is on file with an empty timeline, and that stale record is exactly
+// the thing worth correcting.
+const existing = all.runs.findIndex((r) => r.stepId === stepId);
 
 const run = {
   note: "Reconstructed from chain after the watcher lost its connection. Every field is read from the vault's own logs.",
@@ -67,7 +70,8 @@ const run = {
   explorer: txUrl(armTx),
   recordedAt: new Date().toISOString(),
 };
-all.runs.push(run);
+if (existing >= 0) { all.runs[existing] = { ...all.runs[existing], ...run }; say("refreshed an existing record"); }
+else all.runs.push(run);
 writeFileSync(path, JSON.stringify(all, null, 2) + "\n");
 say(`recorded run ${all.runs.length}: ${timeline.map((t) => t.event).join(" -> ")}  [${status}]`);
 process.exit(0);

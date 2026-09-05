@@ -152,23 +152,24 @@ Proven on chain:
   the balance moved $198.0732 -> $202.4392, and the position went to zero
   (`0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34`)
 
-Not observed, and not claimed:
+Also proven on chain:
 
-- **Reactivity has never been seen to deliver to us.** Every execution so far
-  needed the `syncResolution` backstop. We ruled out filter misconfiguration, a
-  subscription owner below the 32 SOM minimum, a zero priority fee, a low gas
-  limit, a reverting handler, and finally `isGuaranteed: false` — by subscribing
-  through the precompile's raw entry with `isGuaranteed: true` from a funded EOA,
-  which neither the Solidity helper nor the SDK exposes. The handler was still
-  never invoked under any configuration we could set. An earlier claim here cited
-  a specific resolving block as proof; that claim was withdrawn after independent
-  review found the evidence harness had used an event filter viem silently
-  ignores, so the log it cited was a `DrainContinuation`, not an
-  `AnswerDelivered`. The harness now validates emitter, topic0, the exact market
-  id and decoding before any verdict is written, and establishes dispatch from a
-  full call trace rather than top-level transactions. See `docs/FINDINGS.md` and
-  `docs/REACTIVITY_EXPERIMENT.json` for the current, validated state. Reactivity
-  remains the intended primary path, and the product does not pretend otherwise
+- **Reactivity delivers, and drove a sequence with nobody watching.** In block
+  `480220742`, carrying 4 validated `AnswerDelivered` events, the Reactivity
+  precompile called `onEvent` on the vault 8 times, none reverting. One of those
+  markets was our armed trigger, and the vault went `StepArmed -> Triggered ->
+  Placed` with no `ResolutionSynced` in the timeline. Recorded in
+  `docs/REACTIVITY_EXPERIMENT.json` and `docs/LIVE_FIRE.json` run 3
+
+Previously claimed here, now withdrawn:
+
+- This README used to say Reactivity had never been seen to deliver. That was
+  wrong. The evidence harness passed a raw `topics` array to viem's `getLogs`,
+  which ignores it, so it matched an unrelated `DrainContinuation` event and drew
+  a conclusion from a block that never carried an `AnswerDelivered`. The
+  `isGuaranteed` hypothesis is withdrawn too: both the guaranteed EOA-owned
+  subscription and the ordinary vault-owned one delivered in the same block. See
+  `docs/FINDINGS.md` §1b for the full retraction and the corrected method
 
 Deliberately not built yet:
 

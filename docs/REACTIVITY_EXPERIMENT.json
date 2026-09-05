@@ -19,18 +19,172 @@
     "contrast": "Sequence's own subscriptions were created through SomniaExtensions (Solidity) and the SDK's subscribe(); both hardcode isGuaranteed to false and are owned by the vault contract. This one is EOA-owned with isGuaranteed true."
   },
   "result": {
-    "status": "INCONCLUSIVE",
+    "status": "CONCLUSIVE",
     "question": "Under a guaranteed, EOA-owned subscription, does OracleHub's AnswerDelivered invoke the SequenceVault handler?",
-    "answer": "Not determined. No log passed validation as an AnswerDelivered for this exact trigger market, so there is nothing to draw a conclusion from.",
-    "verdict": null,
-    "candidatesInspected": 0,
-    "scanned": {
-      "fromBlock": "480217275",
-      "toBlock": "480220288",
-      "mode": "any AnswerDelivered (subscription wildcards topics 1-3)",
+    "verdict": "REACTIVITY_DELIVERS",
+    "answer": "Yes. In the block carrying a validated AnswerDelivered, the Reactivity precompile called onEvent (0x53edf33d) on the vault 8 time(s), 8 of which completed without reverting.",
+    "subscription": {
+      "note": "A guaranteed subscription owned by an EOA, pointing at the already-deployed SequenceVault. No contract change.",
+      "subscriptionId": "16154782",
+      "owner": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+      "handler": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "emitter": "0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b",
+      "topic0": "0x981074cb1e0ea7eac4cbc8c4c9ddbef8b964373e7e8cd0904c8e0951c4430541",
+      "handlerFunctionSelector": "0x53edf33d",
+      "priorityFeePerGas": "2000000000",
+      "maxFeePerGas": "60000000000",
+      "gasLimit": "10000000",
+      "isGuaranteed": true,
+      "isCoalesced": false,
+      "ownerBalanceWei": "36753277608000000000",
+      "subscribeTx": "0x54857c242c7207743fb7fbf0abde1e20fc56b908ce53d6bf4d7b142d7edd3acb",
+      "createdAt": "2026-09-05T07:54:15.923Z",
+      "checksFailed": 0,
+      "contrast": "Sequence's own subscriptions were created through SomniaExtensions (Solidity) and the SDK's subscribe(); both hardcode isGuaranteed to false and are owned by the vault contract. This one is EOA-owned with isGuaranteed true."
+    },
+    "mode": "any AnswerDelivered (subscription wildcards topics 1-3)",
+    "armedRun": {
+      "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+      "stepId": "0xa48d6ec88685711347798d411a3ef1993a0d5dc89ae100c5eb832415953da878",
+      "armedTx": "0x04707f13daa4003ce282b89230fcfa06fa777dd6037b6f4d85125e90c85952f0",
+      "armedBlock": "480217967",
       "triggerMarketId": "0x0000000000000000000000000000000000000000000000000000000000013fc7"
     },
-    "note": "No Reactivity verdict may be written without a validated matching event. Wait for a real settlement and run again.",
-    "capturedAt": "2026-09-05T07:59:18.027Z"
+    "answerDelivered": {
+      "txHash": "0x8bdb496c3b638c13fa8979af187b9e6e1baa2c1c5bc5aaa8918d49234dbdbf55",
+      "blockNumber": "480220742",
+      "explorer": "https://shannon-explorer.somnia.network/tx/0x8bdb496c3b638c13fa8979af187b9e6e1baa2c1c5bc5aaa8918d49234dbdbf55",
+      "emitter": "0xe40db387cc98601dd11bd634ff2f3ad5686de32b",
+      "topic0": "0x981074cb1e0ea7eac4cbc8c4c9ddbef8b964373e7e8cd0904c8e0951c4430541",
+      "questionIdTopic": "0x000000000000000000000000000000000000000000000000000000000000c69b",
+      "marketIdTopic": "0x0000000000000000000000000000000000000000000000000000000000013e0e",
+      "decoded": {
+        "questionId": "50843",
+        "marketId": "0x0000000000000000000000000000000000000000000000000000000000013e0e",
+        "adapterId": 10000000,
+        "payoutNumerators": [
+          "10000000",
+          "0"
+        ],
+        "isVoid": false
+      },
+      "validation": [
+        {
+          "check": "emitter is OracleHub",
+          "pass": true,
+          "detail": "0xe40db387cc98601dd11bd634ff2f3ad5686de32b"
+        },
+        {
+          "check": "topic0 is the verified AnswerDelivered",
+          "pass": true,
+          "detail": "0x981074cb1e0ea7eac4cbc8c4c9ddbef8b964373e7e8cd0904c8e0951c4430541"
+        },
+        {
+          "check": "topic2 is a market id (unconstrained: the subscription wildcards topics 1-3)",
+          "pass": true,
+          "detail": "0x0000000000000000000000000000000000000000000000000000000000013e0e"
+        },
+        {
+          "check": "log carries three topics (two indexed args)",
+          "pass": true,
+          "detail": "3"
+        },
+        {
+          "check": "decodes as AnswerDelivered",
+          "pass": true,
+          "detail": "AnswerDelivered"
+        }
+      ],
+      "allChecksPassed": true
+    },
+    "handlerDispatch": {
+      "evidenceSource": "debug_traceBlockByNumber with callTracer, walked to every depth",
+      "totalCallFrames": 619,
+      "callsToTheVaultAtAnyDepth": 8,
+      "callsFromThePrecompileAtAnyDepth": 44,
+      "callsToThePrecompileAtAnyDepth": 0,
+      "handlerDispatchesFromPrecompile": 8,
+      "handlerDispatchesThatSucceeded": 8,
+      "onEventSelector": "0x53edf33d",
+      "frames": [
+        {
+          "txHash": "0x46cd5980c3c14b8f654584bb3b82370ba4d3a74337a3882f04ec77ed3ddb3fd3",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        },
+        {
+          "txHash": "0xe4196adccee3fb901912800d09bca147fbb417e4c8aa2e35d9b28e43629f1fd8",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        },
+        {
+          "txHash": "0xd78a45f7ba2892a172398913d5608d435b95da6cd101df5db567175589c5e472",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        },
+        {
+          "txHash": "0x8e41916a74400bf1363f10ca2e00b3dbe3506276d654734a37c711e6ff290c2c",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        },
+        {
+          "txHash": "0xdbff2003deb11bb3784a459819f3472e6a04751cc513e68d97cdf4ffb9a3beb9",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        },
+        {
+          "txHash": "0x1436a40cd9b45628370889368a8934b52c7a5eb17380d5313b50227ede903fd3",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        },
+        {
+          "txHash": "0x77b292066fae6a066f899011a02cf89e7b84bf51f09fae639d63c0236d095e51",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        },
+        {
+          "txHash": "0xf71b3cdd4d80c1cbb78e5d1c1dce73c4f52b8c6e7173a3bb42b6a7fecd0f8a10",
+          "depth": 0,
+          "type": "CALL",
+          "from": "0x0000000000000000000000000000000000000100",
+          "to": "0x0185ca254c9e7b184b566e7037160334519cc9f6",
+          "selector": "0x53edf33d",
+          "error": null
+        }
+      ]
+    },
+    "vaultAfter": {
+      "stepStatus": "PLACED",
+      "eventsInTheResolvingWindow": 2
+    },
+    "capturedAt": "2026-09-05T08:02:03.130Z"
   }
 }
