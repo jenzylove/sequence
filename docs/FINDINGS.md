@@ -89,12 +89,28 @@ read back with `isGuaranteed: true`, an EOA owner rather than the zero address
 our contract-created subscriptions report, and every other field correct. The
 handler was still never invoked.
 
-The clearest single piece of evidence is the resolving block itself. The
-`AnswerDelivered` we were subscribed to was emitted in tx
-`0xbcdeb11d7132df8adc2f3072f39fc1f7a50d469a8ba5ecca9fe54a6c086cd9a8`, block
-`479937799`. That block contains 10 transactions: **none to the vault, and none
-from the precompile**. The dispatch did not fail, it did not happen. Full record
-in `docs/REACTIVITY_EXPERIMENT.json`.
+**Correction.** An earlier version of these notes cited a specific resolving
+block as proof that the event fired and the handler did not. That claim has been
+withdrawn. The evidence harness passed a raw `topics` array to viem's `getLogs`,
+which builds its filter from `event`/`args` and ignores that field, so the query
+returned every OracleHub log in the range and the harness took the first one — a
+`DrainContinuation(uint256,uint256)`, not an `AnswerDelivered`. The same file
+recorded `matchesSubscriptionFilter: false` beside a hard-coded sentence saying
+it matched.
+
+Demonstrated directly: over blocks 479937700-479937899, a raw-topics query
+filtering on an *impossible* market id still returned that log, while the
+ABI-aware query returned nothing. The window contained exactly one OracleHub log
+and it was not an `AnswerDelivered` at all — so the cited block never carried the
+event the conclusion depended on.
+
+The harness now queries with `parseAbiItem` and indexed `args`, validates emitter,
+topic0, the exact market id in topic2 and successful decoding before any verdict
+may be written, and refuses to write one at all if validation fails. It also
+establishes handler dispatch from `debug_traceBlockByNumber` with `callTracer`,
+walked to every call depth, rather than counting top-level block transactions —
+a reactive callback need not be a top-level transaction, so the earlier framing
+was not a sound evidence source either.
 
 `getSubscriptionInfo` also returns the subscription owner as the zero address for
 every subscription created from a contract, which we could not explain and which

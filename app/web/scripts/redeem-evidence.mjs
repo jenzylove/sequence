@@ -232,6 +232,10 @@ for (let i = 1; i <= maxAttempts && !proven; i++) {
   }
 }
 
+// A failed search must never overwrite a proof that already exists: the file is
+// read by the readiness gate, and a contradictory machine-readable state is
+// worse than no state at all.
+const standing = all.proof && BigInt(all.proof.collateralGained || "0") > 0n;
 all.summary = proven
   ? {
       proven: true,
@@ -241,7 +245,11 @@ all.summary = proven
       txHash: proven.redemption.txHash,
       attemptsNeeded: proven.attempt,
     }
-  : { proven: false, note: "No winning position after " + maxAttempts + " attempts. Every attempt is recorded above." };
+  : standing
+    ? { ...all.summary, proven: true, note: all.proof.note, txHash: all.proof.txHash,
+        collateralGained: all.proof.collateralGained,
+        lastSearch: `no new winning position after ${maxAttempts} attempts; the standing proof is unaffected` }
+    : { proven: false, note: `No winning position after ${maxAttempts} attempts. Every attempt is recorded above.` };
 save(all);
 say("\n" + (proven ? "PROVEN" : "NOT PROVEN") + " - written to docs/REDEMPTION.json");
 process.exit(proven ? 0 : 1);

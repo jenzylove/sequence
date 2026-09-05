@@ -26,8 +26,14 @@
     }
   ],
   "summary": {
-    "proven": false,
-    "note": "No winning position after 4 attempts. Every attempt is recorded above."
+    "proven": true,
+    "note": "A position taken through the product's own path, on a market that settled, redeemed back into spendable collateral.",
+    "vault": "0x0185CA254C9e7b184b566e7037160334519cC9f6",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000013bc6",
+    "collateralGained": "4366000",
+    "txHash": "0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34",
+    "attemptsRecorded": 4,
+    "supersedes": "attempts above are the search for a winning position; the proof is what was redeemed"
   },
   "proof": {
     "note": "A position taken through the product's own path, on a market that settled, redeemed back into spendable collateral.",

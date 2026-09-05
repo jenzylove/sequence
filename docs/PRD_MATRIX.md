@@ -13,10 +13,11 @@ vault `0x0185CA254C9e7b184b566e7037160334519cC9f6`, Shannon testnet (50312).
 
 | Requirement | Implementation | Proof | Verdict | Gap |
 | --- | --- | --- | --- | --- |
-| **Automatic Reactivity delivery.** A settlement invokes the vault with no human in the loop. | `SequenceVault.onEvent` (selector `0x53edf33d`), subscription created by `subscribeAllMarkets()`; live subscription `16077958`. | Subscription reads back correct from the precompile. The handler has **never** been observed to be invoked. `docs/REACTIVITY_EXPERIMENT.json`. | **FAIL (external)** | Delivery does not happen on Shannon. Ruled out: filter, owner balance, priority fee, gas limit, handler revert, and `isGuaranteed: false` — the last by subscribing raw with `isGuaranteed: true` from a funded EOA (`16072852`). The resolving block `479937799` held 10 txs, none to the vault and none from the precompile. Classified as a platform limitation, not a Sequence defect. Mitigated by the row below. |
+| **Automatic Reactivity delivery.** A settlement invokes the vault with no human in the loop. | `SequenceVault.onEvent` (selector `0x53edf33d`). Two live subscriptions: vault-owned `16077958`, and EOA-owned `16154782` with `isGuaranteed: true` created through the precompile's raw `subscribe`, which is the only entry that exposes the flag. | Both subscriptions read back correct on every field (11/11 checks). No validated matching `AnswerDelivered` has yet been captured while a subscription was live, so dispatch has not been measured either way. `docs/REACTIVITY_EXPERIMENT.json`, status `INCONCLUSIVE`. | **UNRESOLVED** | An earlier **FAIL (external)** verdict here has been withdrawn: it rested on a log that was a `DrainContinuation`, not an `AnswerDelivered`, because the harness used a topic filter viem silently ignores. Nothing is claimed until a validated event is captured and the block's full call trace is inspected. Mitigated meanwhile by permissionless recovery, below. |
 | **Permissionless recovery.** A stalled sequence must be recoverable by anyone, without privileged access. | `syncResolution(bytes32 marketId)` — reads `isVoided`/`isResolved`/`payoutNumerators` from the market contract and runs the identical state machine behind the same idempotency key. | On chain: `ResolutionSynced -> Triggered -> Placed` (`0x07adeb99…`). 18 tests in `SequenceSync.t.sol` covering replay, late delivery, pause, cap, void and stop. | **PASS** | None. This is why the Reactivity row is survivable rather than fatal. |
 | **Successor trade.** The outcome of one market decides which side of the next market is bought. | `_applyResolution` reads the winning outcome from chain and dispatches `actionOnWin0` / `actionOnWin1` into `placeBinaryOrder`. | Order id `110680464442257315396` placed into BTC 1h off a BTC 5m settlement. `docs/LIVE_FIRE.json` run 2. | **PASS** | None. |
 | **Per-outcome stop.** Either side can independently be Buy YES, Buy NO, or Stop. | `ACT_STOP = 255` honoured on both branches. | `test_stop_on_win0_places_nothing`, `test_stop_on_win1_places_nothing`, `test_stop_still_consumes_the_resolution`, `test_sync_honours_a_stop_branch`. | **PASS** | None. |
+| **Evidence integrity.** No verdict may rest on an unvalidated observation, and evidence files must not contradict themselves. | The Reactivity harness validates emitter, topic0, topic2 and decoding before a verdict is permitted, and writes `INCONCLUSIVE` with no verdict when validation fails. Redemption evidence derives its summary from the proof. Readiness check `#19` blocks on any contradiction. | `#19` passes; a deliberate scan with an impossible market id returns nothing under the corrected query. | **PASS** | Added after independent review found a verdict written beside `matchesSubscriptionFilter: false`. |
 | **Truthful status.** The interface must not claim an order that the pool rejected. | `placeBinaryOrder` wrapped in try/catch, emitting `PlacementRejected` and `Skipped("order-rejected")`. | Observed on chain during an earlier run, and covered by tests. | **PASS** | None. |
 
 ## Capital
@@ -33,7 +34,8 @@ vault `0x0185CA254C9e7b184b566e7037160334519cC9f6`, Shannon testnet (50312).
 | Requirement | Implementation | Proof | Verdict | Gap |
 | --- | --- | --- | --- | --- |
 | **Per-wallet account.** Every wallet gets its own vault; nothing is shared and nothing is hardcoded. | `SequenceVaultFactory.createVault` / `vaultFor`; drafts and working strategy keyed per wallet in `lib/store.js`. | `docs/FRESH_WALLET.json`: wallet `0x71bFaf08…` started with no account, created vault `0x98c5Fba6…`, was confirmed isolated from the author's, set its own `$3.00` limit and activated a sequence signing for itself. | **PASS** | None. |
-| **Markets SDK integration.** The official SDK must be genuinely used, not merely installed. | `src/chain/positions.js` reads the module's market record (`binaryModuleReadAbi`), settlement (`binarySettlementAbi`), outcome balances (`erc6909Abi`), the settlement key (`marketKey`) and addresses (`SOMNIA_TESTNET_ADDRESSES`). Runtime dependency. The Dashboard renders the result and offers redemption. | The SDK address book cross-checks our independently verified constants (module, oracle hub, collateral all identical). Live reads returned correct settlement and balances for two vaults. | **PASS** | Order placement still goes through the vault's own calls rather than the SDK's write helpers, because the vault must place orders itself — an SDK client cannot sign for it. |
+| **Markets SDK integration.** The official SDK must be genuinely used, not merely installed. | `src/chain/positions.js` reads the module's market record (`binaryModuleReadAbi`), settlement (`binarySettlementAbi`), outcome balances (`erc6909Abi`), the settlement key (`marketKey`) and addresses (`SOMNIA_TESTNET_ADDRESSES`). Runtime dependency. The Dashboard renders the result and offers redemption. | The SDK address book cross-checks our independently verified constants (module, oracle hub, collateral all identical). Live reads returned correct settlement and balances. | **PASS** | Order placement still goes through the vault's own calls rather than the SDK's write helpers, because the vault must place orders itself — an SDK client cannot sign for it. |
+| **Claimable position discovery.** The Finished tab must look for outcome tokens in the market they are actually held in. | `tradedMarketIds` resolves each `Placed` event to its stored step and takes `successorMarketId`, and also reads the market ids carried directly by `ExposureReleased` and `Redeemed`. It never infers a held market from `Triggered.marketId`. | Real chain: for the deployed vault it returns the successor `0x…13bc6` and never the trigger `0x…13c18`. 4 unit tests in `src/positions.test.mjs` pin trigger-vs-successor, discovery, the argument `Collect` passes, and that a losing side is shown rather than hidden. | **PASS** | An earlier version read `Triggered.marketId`, which is the *watched* market and can never hold outcome tokens; it would have hidden a genuinely redeemable position. Fixed. |
 | **Order sizing against real pool rules.** Orders must respect tick, lot and minimum quantity, and cost must be computed correctly. | `sizeOrder` / `orderCost` against `getOrderBookParameters()`; cost is `price × quantity / 1e6`. | 23 unit tests; the live order sized to `4366000 @ $0.4580 = $1.9996` against a `$2.0000` cap. | **PASS** | None. |
 
 ---
@@ -42,14 +44,20 @@ vault `0x0185CA254C9e7b184b566e7037160334519cC9f6`, Shannon testnet (50312).
 
 | Verdict | Count |
 | --- | --- |
-| PASS | 11 |
+| PASS | 12 |
 | PARTIAL | 0 |
-| FAIL | 1 (Reactivity delivery, external) |
+| UNRESOLVED | 1 (Reactivity delivery — measurement pending) |
+| FAIL | 0 |
 
-The single FAIL is a platform behaviour we can demonstrate but cannot fix from
-inside the product: the precompile does not invoke the handler on Shannon, under
-any configuration the platform documents, including the one its own tooling does
-not expose. Sequence keeps Reactivity as the primary path, says plainly that it
-has not been seen to deliver, and closes the hole with a permissionless recovery
-that is proven on chain. Every other core requirement passes with a transaction
-or a test behind it.
+The single unresolved row is Reactivity delivery. It is not called a failure,
+because the evidence that previously supported that call did not survive review:
+the harness had matched the wrong log entirely. The corrected harness refuses to
+write any verdict without a validated `AnswerDelivered` — emitter, topic0, market
+id and decoding all checked — and establishes dispatch from a full call trace
+rather than from top-level block transactions, since a reactive callback need not
+be one. Until such an event is captured under a live guaranteed subscription, the
+honest state is "not measured", and that is what the product and this matrix say.
+
+Every other requirement passes with a transaction or a test behind it, and the
+permissionless recovery path means an undelivered callback costs a sequence
+nothing but time.
