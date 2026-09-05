@@ -115,9 +115,6 @@ contract SequenceSubscriptionManager {
             uint8 winningOutcome_
         ) = ISequenceVaultView(vault).steps(stepId);
 
-        // Only these three fields define the subscription chain. The remaining
-        // values are intentionally read from the canonical vault getter rather
-        // than accepted from the caller, then ignored here.
         pool_; price_; quantity_; expireNs_; orderType_; actionOnWin0_;
         actionOnWin1_; notionalCap_; successorMarketId_; orderId_; winningOutcome_;
         return (status_, triggerMarketId_, nextStepId_);
@@ -173,7 +170,9 @@ contract SequenceSubscriptionManager {
 
         uint256 newCount;
         for (uint256 i; i < markets.length; ++i) {
-            if (subscriptionOf[_key(vault, markets[i])] == 0) unchecked { newCount += 1; }
+            if (subscriptionOf[_key(vault, markets[i])] == 0) {
+                unchecked { newCount += 1; }
+            }
         }
         uint256 requested = liveSubscriptionsByVault[vault] + newCount;
         if (requested > MAX_LIVE_PER_VAULT) revert VaultSubscriptionCap(requested, MAX_LIVE_PER_VAULT);
