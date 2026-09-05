@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/**'
       - 'test/**'
+      - 'app/web/scripts/deploy-shared-manager.mjs'
+      - 'app/web/scripts/chained-reactivity-live.mjs'
       - 'foundry.toml'
       - 'remappings.txt'
       - 'package.json'
@@ -15,6 +17,8 @@ on:
     paths:
       - 'src/**'
       - 'test/**'
+      - 'app/web/scripts/deploy-shared-manager.mjs'
+      - 'app/web/scripts/chained-reactivity-live.mjs'
       - 'foundry.toml'
       - 'remappings.txt'
       - 'package.json'
@@ -44,3 +48,7 @@ jobs:
         run: forge build
       - name: Test
         run: forge test -vv
+      - name: Syntax-check final Reactivity commands
+        run: |
+          node --check app/web/scripts/deploy-shared-manager.mjs
+          node --check app/web/scripts/chained-reactivity-live.mjs
