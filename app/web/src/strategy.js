@@ -88,10 +88,23 @@ export function nextWindowFor(markets, after, { requireCadence = false } = {}) {
   const sameCadence = later.find((m) => m.asset === after.asset && normaliseInterval(m.intervalSec) === cadence);
   if (sameCadence || requireCadence) return sameCadence || null;
 
-  // A generic continuation may use the asset's next window at another cadence,
-  // but only because the interface names that market before activation.
-  return later.find((m) => m.asset === after.asset) || null;
+  // A continuation may use the asset's next window at another cadence, because
+  // only one window per series is open at a time and refusing would make most
+  // markets a dead end. But it may not change the horizon beyond recognition.
+  //
+  // Watching a 4h market and rolling into a 45-day contract is not "the next
+  // window" in any sense a trader means: it is a 270x jump, and rolling twice
+  // would put settlement months out. A substitute has to stay within reach of
+  // what was actually being watched.
+  return later.find((m) =>
+    m.asset === after.asset
+    && normaliseInterval(m.intervalSec) <= cadence * MAX_SUBSTITUTE_MULTIPLE) || null;
 }
+
+// How much longer a substitute window may run than the one being watched.
+// 24x lets a 5m roll into an hour and a 4h roll into a day, and stops a 4h from
+// becoming a month and a half.
+export const MAX_SUBSTITUTE_MULTIPLE = 24;
 
 // True when the continuation is not the same cadence the trader was looking at,
 // so the interface can say which market it will actually trade.
@@ -117,8 +130,21 @@ export function seedFromMarkets(markets) {
   if (!trigger || !successor) return strat;
 
   strat.steps = [makeStep(1, { triggerMarket: trigger, successorMarket: successor })];
-  strat.name = `${trigger.asset || "Rolling"} sequence`;
+  strat.name = autoNameFor(trigger.asset);
   return strat;
+}
+
+// The sequence's name follows the market it watches, until a trader renames it.
+//
+// It used to be stamped once when the builder seeded itself and then left alone,
+// so switching the watched market from ETH to BTC left "ETH sequence" sitting at
+// the top of a panel showing BTC — the label contradicting the thing it labels.
+export const autoNameFor = (asset) => `${asset || "Rolling"} sequence`;
+
+// True while the name is still one we generated, which is what makes it safe to
+// replace. Anything a trader typed is theirs and is left alone.
+export function isAutoName(name) {
+  return !name || name === "Untitled sequence" || /^[A-Za-z0-9]+ sequence$/.test(name);
 }
 
 // Matches SequenceVault._cost: prices are 6dp fractions and quantities are 6dp

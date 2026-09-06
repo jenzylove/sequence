@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { readableError } from "../hooks/useTx.js";
 import { shortAccount } from "../hooks/useWallet.js";
 import { fmt, KIND_LABEL } from "../sim.js";
 import { txUrl, addressUrl, SHANNON } from "../chain/config.js";
-import { cancelStep, setPaused } from "../chain/vault.js";
+import { cancelStep, setPaused, isAutomated } from "../chain/vault.js";
+import { marketQuestion } from "../lib/language.js";
 import FundPanel from "./FundPanel.jsx";
 import Automation from "./Automation.jsx";
 import ScreenHeader from "./ScreenHeader.jsx";
@@ -17,11 +18,23 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
   const [view, setView] = useState("active");
   const [busy, setBusy] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [automated, setAutomated] = useState(null);
 
   const isOwner = vault.isOwner(wallet.account);
   const state = vault.state;
   const live = vault.steps.filter((s) => s.exists);
   const active = live.find((s) => !TERMINAL.includes(s.statusLabel)) || live[0] || null;
+  // Automatic delivery is a property of the market being registered with
+  // Sequence's shared subscription manager, not of anything the trader funded.
+  useEffect(() => {
+    let live = true;
+    if (!vault.address || !active?.triggerMarketId) { setAutomated(null); return undefined; }
+    isAutomated(vault.address, active.triggerMarketId)
+      .then((v) => live && setAutomated(Boolean(v)))
+      .catch(() => live && setAutomated(null));
+    return () => { live = false; };
+  }, [vault.address, active?.triggerMarketId]);
+
   const remaining = state ? state.maxOutstanding - state.outstanding : null;
   const usage = state && state.maxOutstanding > 0n
     ? Math.min(100, (Number(state.outstanding) / Number(state.maxOutstanding)) * 100)
@@ -62,7 +75,7 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
             <div>
               <div className="text-[12px] font-bold text-[#242128]">{wallet.connected ? `${wallet.walletName} connected` : "Connect to arm this sequence"}</div>
               <div className="mt-1 text-[10px] text-[#99949e]">{wallet.connected
-                ? `${shortAccount(wallet.account)} · ${wallet.onShannon ? "Shannon testnet" : `Chain ${parseInt(wallet.chainId, 16)}`}${isOwner ? " · vault owner" : ""}`
+                ? `${shortAccount(wallet.account)} · ${wallet.onShannon ? "Shannon testnet" : `Chain ${parseInt(wallet.chainId, 16)}`}${isOwner ? " · you own this account" : ""}`
                 : "Build and simulate without connecting. A wallet is only needed to fund and arm."}</div>
             </div>
           </div>
@@ -103,14 +116,18 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
                     <button onClick={vault.refresh} className="ml-2 font-bold text-[#6f58c2]">Retry</button>
                   </div>
                 ) : !state ? (
-                  <div className="text-[11px] text-[#8d8792]">Reading vault state from Shannon…</div>
+                  <div className="text-[11px] text-[#8d8792]">Reading your account from Shannon…</div>
                 ) : (
                   <>
                     <div className="flex items-end justify-between">
                       <div>
                         <div className="micro-label">{active ? "Waiting for" : "Vault"}</div>
                         <h3 className="mt-2 max-w-[260px] text-[20px] font-extrabold leading-[1.15] tracking-[-.04em] text-[#151318]">
-                          {active ? (active.triggerLabel || "A DreamDEX settlement") : "Nothing armed yet"}
+                          {active
+                            ? (marketQuestion(markets.open.find((m) => m.marketId?.toLowerCase() === active.triggerMarketId?.toLowerCase()))
+                               || cleanLabel(active.triggerLabel)
+                               || "A DreamDEX settlement")
+                            : "Nothing armed yet"}
                         </h3>
                       </div>
                       {live.length > 0 && <span className="text-[10px] font-semibold text-[#8b72e8]">{live.filter((s) => !TERMINAL.includes(s.statusLabel)).length} live</span>}
@@ -139,14 +156,23 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
                     ) : (
                       <div className="mt-7 rounded-sm border-l-[3px] border-[#ded9e3] bg-[#fbfbfc] p-5">
                         <div className="micro-label">Nothing waiting</div>
-                        <p className="mt-2 text-[10px] leading-[1.65] text-[#85808a]">Build a bounded step and arm it from the builder. Once armed, its live status and every transition appear here from vault state.</p>
+                        <p className="mt-2 text-[10px] leading-[1.65] text-[#85808a]">Build a bounded step and arm it from the builder. Once armed, its live status and every transition appear here, read back from your account.</p>
                       </div>
                     )}
 
-                    {!state.subscribed && (
-                      <p className="mt-5 rounded-sm bg-[#fff8f4] p-4 text-[10px] leading-[1.6] text-[#a8724f]">
-                        This vault holds no Somnia Reactivity subscription yet, so settlements are not pushed to it automatically. Subscribing stakes 32 STT from the vault. It is optional: sequences still run when a settled result is pushed through manually.
-                      </p>
+                    {active && (
+                      automated === null ? null : automated ? (
+                        <p className="mt-5 rounded-sm bg-[#f7fcf9] p-4 text-[10px] leading-[1.6] text-[#40906b]">
+                          Somnia will push this settlement to your account automatically. Sequence pays for that
+                          delivery; you hold no stake for it.
+                        </p>
+                      ) : (
+                        <p className="mt-5 rounded-sm bg-[#fff8f4] p-4 text-[10px] leading-[1.6] text-[#a8724f]">
+                          This market is not registered for automatic delivery, so nothing will wake your account
+                          on its own. It still runs: press <b className="font-bold">Check result</b> once the market
+                          settles and the sequence continues from there.
+                        </p>
+                      )
                     )}
 
                     <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
@@ -159,7 +185,7 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
                             </button>
                           )}
                           <button disabled={busy !== null} onClick={() => runOwnerAction("pause", () => setPaused({ provider: wallet.provider, account: wallet.account, vault: vault.address, paused: !state.paused }))} className="text-[10px] font-semibold text-[#8f8994] hover:text-[#242128] disabled:opacity-40">
-                            {busy === "pause" ? "Sending…" : state.paused ? "Unpause vault" : "Pause vault"}
+                            {busy === "pause" ? "Sending…" : state.paused ? "Resume trading" : "Pause trading"}
                           </button>
                         </div>
                       )}
@@ -174,13 +200,13 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
           <article id="proof" className="proof-card">
             <div className="flex items-start justify-between gap-6 border-b border-[#ece9ef] px-7 py-6">
               <div><div className="micro-label">Execution proof</div><h3 className="mt-2 text-[24px] font-extrabold tracking-[-.04em] text-[#151318]">A readable onchain trail</h3></div>
-              <span className="rounded-full bg-[#eaf7f0] px-3 py-1.5 text-[8px] font-bold uppercase tracking-[.1em] text-[#40906b]">Vault events</span>
+              <span className="rounded-full bg-[#eaf7f0] px-3 py-1.5 text-[8px] font-bold uppercase tracking-[.1em] text-[#40906b]">Account activity</span>
             </div>
 
             <div className="px-7 py-3">
               {vault.events.length === 0 ? (
                 <div className="py-8 text-[11px] leading-[1.75] text-[#7f7984]">
-                  No SequenceVault events in the scanned window yet. Arm a step from the builder and every transition the vault emits — armed, triggered, executed or skipped — is decoded here with its transaction hash.
+                  Nothing has happened on this account yet. Once a sequence is live, every step it takes — armed, triggered, traded or skipped — is listed here with the transaction that proves it.
                 </div>
               ) : vault.events.map((item, index) => {
                 const row = describe(item);
@@ -202,7 +228,12 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 bg-[#faf9fb] px-7 py-5">
-              <span className="font-mono text-[9px] text-[#99949e]">AnswerDelivered(uint256,bytes32,uint32,uint256[],bool)</span>
+              {/* A bare ABI signature says nothing on its own. Name what it is
+                  and why it is on the page, then show it. */}
+              <span className="text-[9px] leading-[1.6] text-[#99949e]">
+                Settlements reach your account as Somnia&rsquo;s{" "}
+                <code className="font-mono text-[#7f7984]">AnswerDelivered</code> event, published by DreamDEX&rsquo;s oracle.
+              </span>
               <a href="https://github.com/jenzylove/sequence/blob/main/docs/VERIFIED.md" target="_blank" rel="noreferrer" className="text-[9px] font-bold text-[#6f58c2]">View provenance ↗</a>
             </div>
           </article>
@@ -234,7 +265,7 @@ function describe(item) {
     case "Executed":
       return { tone: "green", title: "Bounded order placed", detail: `${KIND_LABEL[Number(a.kind)]} for ${fmt(a.notional)} on ${short(a.pool)}. Order id ${a.orderId?.toString()}, pool reported ${a.success ? "success" : "failure"}.` };
     case "Skipped":
-      return { tone: "coral", title: "Successor skipped", detail: `The vault declined to place: ${a.reason}. Nothing was committed.` };
+      return { tone: "coral", title: "Successor skipped", detail: `Your account declined to place this: ${a.reason}. Nothing was committed.` };
     case "StepCancelled":
       return { tone: "coral", title: "Step cancelled", detail: `The owner cancelled step ${short(a.stepId)} before it could fire.` };
     case "PausedSet":
@@ -245,6 +276,16 @@ function describe(item) {
 }
 
 const sideLabel = (a) => (a === 255 ? "stop" : a === 2 ? "buy NO" : "buy YES");
+
+// Older armed steps stored the indexer's raw question ("Pricefeed test: will
+// BTC/USDC's price be at or above 79644.57 at unix time 1788616800?"). Nobody
+// should read that, so strip it back to the part that means something.
+const cleanLabel = (v) => {
+  if (!v) return "";
+  if (!/pricefeed test|unix time/i.test(v)) return v;
+  const m = /(\w+)\/\w+'s price be at or above ([\d.]+)/i.exec(v);
+  return m ? `Does ${m[1]} close at or above ${Number(m[2]).toLocaleString()}?` : "A DreamDEX settlement";
+};
 
 const short = (v) => (typeof v === "string" && v.length > 14 ? `${v.slice(0, 8)}…${v.slice(-4)}` : String(v));
 

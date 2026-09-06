@@ -3,6 +3,7 @@ import { fmt } from "../sim.js";
 import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, purgeLegacyStrategy,
   validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor, isCadenceSubstitution,
+  autoNameFor, isAutoName,
 } from "../strategy.js";
 import { armStep, queueStep, ensurePoolAllowances, publicClient, registerAutomation } from "../chain/vault.js";
 import { vaultAbi } from "../chain/abi.js";
@@ -20,7 +21,7 @@ import CommandBar from "./CommandBar.jsx";
 import MarketPanel from "./MarketPanel.jsx";
 import {
   marketName, marketQuestion, branchActions, describePlan,
-  countdown, settlePhrase, marketShortAsk, asOdds, ORDER_TYPE_COPY,
+  countdown, settlePhrase, marketShortAsk, asOdds, ORDER_TYPE_COPY, intervalLabel,
 } from "../lib/language.js";
 
 // The builder, arranged as the questions a trader actually asks:
@@ -140,6 +141,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       setSizeProblem(`No later ${m.asset} market is open to continue into yet. Pick another market, or wait for the next window.`);
       update(key, { triggerMarketId: m.marketId, triggerLabel: m.question, triggerExpiry: m.expiry,
         successorMarketId: "", successorLabel: "", successorExpiry: null, pool: "" });
+      setStrategy((cur) => (cur && isAutoName(cur.name) ? { ...cur, name: autoNameFor(m.asset) } : cur));
       setArmResult(null);
       return;
     }
@@ -148,6 +150,8 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       triggerMarketId: m.marketId, triggerLabel: m.question, triggerExpiry: m.expiry,
       ...(next ? { successorMarketId: next.marketId, successorLabel: next.question, successorExpiry: next.expiry, pool: next.pool } : {}),
     });
+    // Keep the title honest about what is being watched, unless it was renamed.
+    setStrategy((cur) => (cur && isAutoName(cur.name) ? { ...cur, name: autoNameFor(m.asset) } : cur));
     setArmResult(null);
   };
 
@@ -470,7 +474,9 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
                 {successor && isCadenceSubstitution(trigger, successor) && (
                   <p className="mb-3 rounded-sm border-l-[3px] border-[#ff9b7f] bg-[#fff8f4] p-3 text-[10px] leading-[1.6] text-[#8a5f47]">
                     No {marketName(trigger)} window is open after this one, so the follow-on trade goes into
-                    the next {marketName(successor)} instead. That is the market it will actually trade.
+                    the next {marketName(successor)} instead — a {intervalLabel(successor.intervalSec)} contract,
+                    settling {countdown(successor.expiry)}. That is the market it will actually trade, and the
+                    horizon it will actually run for.
                   </p>
                 )}
                 <div className="space-y-3">
@@ -531,10 +537,15 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
                         Nothing is resting on this book yet, so there is no price to cross. The order may not fill until someone quotes it.
                       </p>
                     ) : (
-                      <div className="mt-2.5 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-[10px] text-[#7f7984]">
-                        <span>Best ask {fmt(buyingNo ? book.bestAskNo : book.bestAskYes)}</span>
-                        <span className="text-[#28252c]">Your order crosses at <b className="font-bold">{fmt(step.price)}</b></span>
-                        <span className="text-[#a19ca5]">{buyingNo ? "NO is priced from the YES book" : "taken from resting sell orders"}</span>
+                      <div className="mt-2.5 text-[10px] leading-[1.7] text-[#7f7984]">
+                        <span className="text-[#28252c]">
+                          About <b className="font-bold">{fmt(step.price)}</b> per contract, so{" "}
+                          <b className="font-bold">{(Number(step.quantity) / 1e6).toFixed(2)}</b> contracts
+                          for {fmt(notionalOf(step))}.
+                        </span>
+                        <span className="ml-2 text-[#a19ca5]">
+                          Each pays out $1.00 if {buyingNo ? "NO" : "YES"} wins, nothing if it does not.
+                        </span>
                       </div>
                     )}
                   </div>
