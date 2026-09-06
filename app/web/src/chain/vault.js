@@ -151,6 +151,7 @@ export function encodeArmStep(stepId, step) {
 // Simulate against real chain state first so a revert is reported before the
 // user is asked to sign anything.
 export async function armStep({ provider, account, stepId, step, vault = SHANNON.vault }) {
+  assertVaultStep({ ...step, status: 0, orderId: 0n, winningOutcome: 0 }, "This step");
   const client = publicClient();
   const args = [stepId, {
     status: 0,
@@ -320,7 +321,13 @@ export async function readNativeBalance(address) {
 
 export const subscribeAllMarkets = (opts) => sendVaultTx({ ...opts, functionName: "subscribeAllMarkets", args: [] });
 export const approvePool = (opts) => sendVaultTx({ ...opts, functionName: "approvePool", args: [opts.pool, opts.amount] });
-export const queueStep = (opts) => sendVaultTx({ ...opts, functionName: "queueStep", args: [opts.stepId, opts.step] });
+// queueStep hands the struct straight to the encoder, so unlike armStep it has
+// no chance to fill anything in. That is where a two-step activation died: the
+// queued step arrived with eleven of fourteen fields and viem tried to make a
+// BigInt out of the hole. The check names the missing field at our own boundary
+// rather than letting it surface as a wallet-shaped error.
+export const queueStep = (opts) =>
+  sendVaultTx({ ...opts, functionName: "queueStep", args: [opts.stepId, assertVaultStep(opts.step, "This queued step")] });
 // Nudge a step whose market has resolved but whose event never arrived.
 // Permissionless: the caller supplies only a market id and the vault reads the
 // outcome from the market contract itself.

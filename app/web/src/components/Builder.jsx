@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../sim.js";
 import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, purgeLegacyStrategy,
@@ -36,6 +36,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   // how many remain, is the difference between a flow and a pile of popups.
   const [progress, setProgress] = useState(null);
   const [activateOpen, setActivateOpen] = useState(false);
+  const progressRef = useRef(null);
   const [armResult, setArmResult] = useState(null);
   const [book, setBook] = useState(null);
   const [tradable, setTradable] = useState(null);
@@ -224,7 +225,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const activate = async () => {
     setArming(true);
     setArmResult(null);
-    setProgress({ label: "Checking the markets are still tradable…", at: 0, of: 0 });
+    setProgress(progressRef.current = { label: "Checking the markets are still tradable…", at: 0, of: 0 });
 
     // Nothing below is worth opening a wallet for if the wallet cannot pay.
     if (vault.address) {
@@ -255,7 +256,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
     // Every pool this sequence could execute against must be able to draw the
     // collateral, not just the first one.
     const total = strategy.steps.length + 1;   // allowances + each step
-    setProgress({ label: "Giving the markets permission to draw your funds", at: 1, of: total });
+    setProgress(progressRef.current = { label: "Giving the markets permission to draw your funds", at: 1, of: total });
     try {
       await ensurePoolAllowances({
         provider: wallet.provider, account: wallet.account,
@@ -264,7 +265,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
         amount: strategy.maxOutstanding,
       });
     } catch (cause) {
-      setArmResult({ ok: false, error: readableError(cause) });
+      setArmResult({ ok: false, error: `Could not give the markets permission to draw funds. ${readableError(cause)}` });
       setArming(false); setProgress(null);
       return;
     }
@@ -276,7 +277,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       for (let i = strategy.steps.length - 1; i >= 1; i -= 1) {
         const s = strategy.steps[i];
         const next = i + 1 < ids.length ? ids[i + 1] : undefined;
-        setProgress({ label: `Saving step ${i + 1} of your sequence`, at: total - i, of: total });
+        setProgress(progressRef.current = { label: `Saving step ${i + 1} of your sequence`, at: total - i, of: total });
         await queueStep({
           provider: wallet.provider, account: wallet.account, vault: vault.address,
           stepId: ids[i], step: toVaultStep(s, Date.now(), next),
@@ -285,7 +286,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
 
       for (const [i, s] of [strategy.steps[0]].entries()) {
         const stepId = ids[i];
-        setProgress({ label: "Arming the first step — this is the one that goes live", at: total, of: total });
+        setProgress(progressRef.current = { label: "Arming the first step — this is the one that goes live", at: total, of: total });
         const result = await armStep({
           provider: wallet.provider, account: wallet.account, vault: vault.address, stepId,
           step: toVaultStep(s, Date.now(), ids[1]),
@@ -303,7 +304,7 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       // Switch on automatic execution for the market this sequence watches.
       // Sequence's manager owns the subscription and pays the stake, so this
       // costs the trader nothing but the signature.
-      setProgress({ label: "Turning on automatic execution", at: total, of: total });
+      setProgress(progressRef.current = { label: "Turning on automatic execution", at: total, of: total });
       try {
         await registerAutomation({
           provider: wallet.provider, account: wallet.account,
@@ -323,7 +324,16 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
       setArmResult({ ok: true, hash: done[0], count: strategy.steps.length });
       onActivated?.(strategy);
     } catch (cause) {
-      setArmResult({ ok: false, error: readableError(cause) });
+      // Name the stage. "Activation failed" leaves a trader wondering whether
+      // their money moved; "saving step 2 of your sequence failed, nothing is
+      // live" tells them where they stand.
+      const stage = progressRef.current?.label
+        ? progressRef.current.label.charAt(0).toLowerCase() + progressRef.current.label.slice(1)
+        : "putting your sequence live";
+      setArmResult({
+        ok: false,
+        error: `Stopped while ${stage}. ${readableError(cause)} Nothing is live and nothing is at risk.`,
+      });
     } finally {
       setArming(false);
       setProgress(null);

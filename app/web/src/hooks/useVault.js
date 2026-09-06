@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readableError } from "./useTx.js";
 import { readVaultState, readStep, readVaultEvents, vaultForAccount, discoverSteps } from "../chain/vault.js";
 
 // Local records are scoped to the wallet they belong to. Sharing one key across
@@ -79,7 +80,7 @@ export function useVault(account, { refreshMs = 12000, marketIds = [] } = {}) {
       setStatus("ready");
       setError(null);
     } catch (cause) {
-      setError(cause?.shortMessage || cause?.message || "Could not read your account.");
+      setError(readableError(cause));
       setStatus("error");
     }
   }, [address, account]);

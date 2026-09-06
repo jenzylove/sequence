@@ -161,6 +161,29 @@ Also proven on chain:
   Placed` with no `ResolutionSynced` in the timeline. Recorded in
   `docs/REACTIVITY_EXPERIMENT.json` and `docs/LIVE_FIRE.json` run 3
 
+A dependent sequence runs itself, end to end:
+
+- **Two settlements, two hours apart, nobody watching.** One activation, one
+  registration, then: `Triggered → Placed → StepArmed → ChainAdvanced` at
+  10:00:01Z, and `ExposureReleased → Triggered → Placed` at 12:00:02Z. Both steps
+  placed, **zero manual resolution calls**, and the trader held 3.71 STT the whole
+  time. Recorded in `docs/CHAINED_REACTIVITY_LIVE.json`
+
+Who pays for automatic execution:
+
+- **Sequence does, not the trader.** Somnia charges the subscription *owner* and
+  separately lets that owner name any contract as the *handler*, so
+  `SequenceSubscriptionManager` holds one 35 STT stake and every user's own vault
+  is a handler on subscriptions it owns. A trader stakes nothing. Proven with two
+  unrelated wallets holding 1.72 STT each, both advancing with no manual step
+  (`docs/SHARED_REACTIVITY_LIVE.json`)
+- **Delivery depends on the market.** OracleHub does not emit `AnswerDelivered`
+  for every market that settles, and which series it is answering changes over
+  time. A sequence watching a window the oracle has not answered is advanced by
+  the permissionless `syncResolution` path instead. That is a property of the
+  oracle, not of Sequence, and it is why the recovery path exists. See
+  `docs/FINDINGS.md` §1c
+
 Previously claimed here, now withdrawn:
 
 - This README used to say Reactivity had never been seen to deliver. That was

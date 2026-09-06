@@ -70,7 +70,7 @@ export function useWallet() {
       wallet.provider.on?.("disconnect", disconnect);
       return true;
     } catch (cause) {
-      setError(cause?.code === 4001 ? "Connection was cancelled." : (cause?.message || "Could not connect this wallet."));
+      setError(cause?.code === 4001 ? "Connection was cancelled." : "Could not connect this wallet. Nothing was shared.");
       setStatus("error");
       return false;
     }
@@ -85,7 +85,7 @@ export function useWallet() {
       return true;
     } catch (cause) {
       if (cause?.code !== 4902) {
-        setError(cause?.code === 4001 ? "Network switch was cancelled." : (cause?.message || "Could not switch network."));
+        setError(cause?.code === 4001 ? "Network switch was cancelled." : "Could not switch network. Your wallet is unchanged.");
         return false;
       }
       try {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { readableError } from "../hooks/useTx.js";
 import { shortAccount } from "../hooks/useWallet.js";
 import { fmt, KIND_LABEL } from "../sim.js";
 import { txUrl, addressUrl, SHANNON } from "../chain/config.js";
@@ -33,7 +34,7 @@ export default function Operations({ wallet, vault, markets, onWallet, onBuild, 
       await fn();
       await vault.refresh();
     } catch (cause) {
-      setActionError(cause?.shortMessage || cause?.message || "The transaction did not go through.");
+      setActionError(readableError(cause));
     } finally {
       setBusy(null);
     }

@@ -187,19 +187,55 @@ const money = (raw) => "$" + (Number(raw) / 1e6).toLocaleString(undefined, { max
 
 // expireTimestampNs is nanoseconds and must be strictly future, and no later
 // than the successor market's own expiry (docs/VERIFIED.md).
+// When the follow-on order stops being valid.
+//
+// This used to take the *earlier* of the successor market's expiry and one hour
+// from now, which quietly capped every order at an hour after activation. For
+// the first step that is harmless: it fires within minutes. For a queued second
+// step it is fatal — it only fires when its own trigger settles, which can be
+// hours later, by which time the order it was carrying had already expired and
+// the pool refused it with `OrderAlreadyExpired()`. A two-step sequence spanning
+// more than an hour could therefore never complete, which is the one thing the
+// product exists to do.
+//
+// The real deadline is the market being traded into: past its expiry there is
+// nothing to buy, and the vault's own notional cap — not a clock — is what
+// bounds the risk. The hour is only a fallback for when we do not know the
+// market's expiry at all.
 export function expireNsFor(step, now = Date.now()) {
-  const marketExpiryNs = step.successorExpiry ? BigInt(step.successorExpiry) * 1_000_000_000n : null;
-  const defaultNs = BigInt(Math.floor(now / 1000) + 3600) * 1_000_000_000n;
-  if (marketExpiryNs && marketExpiryNs < defaultNs) return marketExpiryNs;
-  return defaultNs;
+  if (step.successorExpiry) return BigInt(step.successorExpiry) * 1_000_000_000n;
+  return BigInt(Math.floor(now / 1000) + 3600) * 1_000_000_000n;
 }
 
 const ZERO32 = `0x${"00".repeat(32)}`;
 
 // nextStepId links the chain on chain: the vault arms it only after this step
 // actually places an order.
+// The vault's Step struct has fourteen fields. Eleven describe the rule the
+// trader wrote; the other three are the vault's own runtime state — which step
+// it is up to, the order it placed, the outcome it read.
+//
+// This used to return only the eleven, leaving `status`, `orderId` and
+// `winningOutcome` undefined. Every script that armed a step had quietly
+// compensated by spreading them in by hand, so the gap never showed up in a
+// proof — but the builder, which is the only path a real trader takes, did not,
+// and viem turned the hole into "Cannot convert undefined to a BigInt" at the
+// moment of signing.
+//
+// The three runtime fields are not a default we are inventing. A step that has
+// never run is by definition NONE, with no order and no outcome, and the
+// contract overwrites all three the moment it acts. Producing a complete,
+// encodable struct is this function's whole job, so it does it here once rather
+// than asking each caller to remember.
+export const VAULT_STEP_FIELDS = [
+  "status", "triggerMarketId", "pool", "price", "quantity", "expireNs",
+  "orderType", "actionOnWin0", "actionOnWin1", "notionalCap",
+  "successorMarketId", "nextStepId", "orderId", "winningOutcome",
+];
+
 export function toVaultStep(step, now = Date.now(), nextStepId = ZERO32) {
   return {
+    // The rule.
     successorMarketId: step.successorMarketId || ZERO32,
     nextStepId,
     triggerMarketId: step.triggerMarketId,
@@ -211,7 +247,24 @@ export function toVaultStep(step, now = Date.now(), nextStepId = ZERO32) {
     actionOnWin0: step.actionOnWin0,
     actionOnWin1: step.actionOnWin1,
     notionalCap: step.notionalCap,
+    // The vault's runtime state, at the only value it can hold before it runs.
+    status: 0,          // Status.NONE
+    orderId: 0n,        // nothing placed yet
+    winningOutcome: 0,  // nothing read yet
   };
+}
+
+/// Refuse to hand the ABI encoder a hole.
+///
+/// A missing numeric field becomes `BigInt(undefined)` deep inside viem, which
+/// reads as a bug in the wallet rather than in us. This names the field instead,
+/// before a wallet is ever opened.
+export function assertVaultStep(step, where = "this step") {
+  const missing = VAULT_STEP_FIELDS.filter((f) => step?.[f] === undefined || step?.[f] === null);
+  if (missing.length) {
+    throw new Error(`${where} is incomplete: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} missing.`);
+  }
+  return step;
 }
 
 export const onchainStepId = (strategy, step) => stepIdFor(`${strategy.name}::${step.name}`);

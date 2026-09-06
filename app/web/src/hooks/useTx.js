@@ -124,5 +124,23 @@ export function readableError(cause) {
   if (raw.includes("reverted")) {
     return "The network refused this transaction, so nothing changed. This usually means a condition stopped being true while you were signing.";
   }
-  return cause?.shortMessage || cause?.message || "That did not go through. Nothing was changed.";
+  // Anything left is developer text. A trader should never be shown a BigInt
+  // conversion, an ABI path or a stack: it tells them nothing they can act on
+  // and reads as though their money is somewhere strange. Say what happened and
+  // keep the detail in the console for us.
+  const raw2 = cause?.shortMessage || cause?.message || "";
+  if (!raw2 || looksInternal(raw2)) {
+    if (raw2) console.error("[sequence] internal error surfaced to the user:", cause);
+    return "Something went wrong on our side before anything was sent. Nothing was signed and nothing moved.";
+  }
+  return raw2;
+}
+
+// Messages that are about our code rather than about the user's situation.
+const INTERNAL_PATTERNS = [
+  /bigint/i, /undefined/i, /is not a function/i, /cannot read propert/i,
+  /abi/i, /encode/i, /decode/i, /\bnull\b/i, /stack/i, /viem@/i, /\bNaN\b/,
+];
+export function looksInternal(message) {
+  return INTERNAL_PATTERNS.some((p) => p.test(message));
 }

@@ -15,7 +15,7 @@
       "address": "0xe64c4a2Ba906fCB4319615A34870F9e13ad89A67",
       "storageKeysAtStart": 0,
       "recovered": true,
-      "tab": "Finished",
+      "tab": "Live",
       "shot": "recovery-shared-reactivity-user-a.png"
     },
     {
@@ -23,9 +23,9 @@
       "address": "0xEBB1F6Fe194A20Fe0c875E79d70C56c2411c3AeF",
       "storageKeysAtStart": 0,
       "recovered": true,
-      "tab": "Finished",
+      "tab": "Live",
       "shot": "recovery-shared-reactivity-user-b.png"
     }
   ],
-  "checkedAt": "2026-09-05T20:23:57.507Z"
+  "checkedAt": "2026-09-05T22:29:21.826Z"
 }

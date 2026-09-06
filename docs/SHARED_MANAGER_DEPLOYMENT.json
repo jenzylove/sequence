@@ -1,0 +1,38 @@
+{
+  "purpose": "Production-shaped shared Reactivity manager deployment",
+  "manager": "0x88a3b51437c959ec80123f8cd12be3ae817bf529",
+  "operator": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324",
+  "factory": "0xF492234a4b522D19dd76dBB435ad9471a652f950",
+  "stake": "35000000000000000000",
+  "liveSubscriptions": "0",
+  "deployTx": "0x23321ed2975cbc2a1390ae8c14d49225a4e84047a67dbe9b59ec7da4083a3b28",
+  "deployBlock": "480730487",
+  "checks": [
+    {
+      "check": "deployed bytecode exists",
+      "pass": true,
+      "detail": "4363 bytes"
+    },
+    {
+      "check": "operator is project wallet",
+      "pass": true,
+      "detail": "0x8827d3AF20eFe02582aEA67a5E704C04BAd52324"
+    },
+    {
+      "check": "manager is bound to canonical factory",
+      "pass": true,
+      "detail": "0xF492234a4b522D19dd76dBB435ad9471a652f950"
+    },
+    {
+      "check": "one shared stake is funded",
+      "pass": true,
+      "detail": "35.00 STT"
+    },
+    {
+      "check": "manager starts with zero subscriptions",
+      "pass": true,
+      "detail": "0"
+    }
+  ],
+  "deployedAt": "2026-09-05T22:09:48.957Z"
+}

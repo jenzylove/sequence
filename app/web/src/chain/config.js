@@ -17,7 +17,7 @@ export const SHANNON = {
   // Sequence pays for Reactivity so traders do not have to. One funded owner,
   // many handlers: every user's own vault is the handler on a subscription this
   // contract owns. Users stake nothing.
-  subscriptionManager: "0x14978582D694Ee15e8228f012A7d5eE64972C0F7",
+  subscriptionManager: "0x88a3b51437c959ec80123f8cd12be3ae817bf529",
   nativeCurrency: { name: "Somnia", symbol: "STT", decimals: 18 },
 };
 

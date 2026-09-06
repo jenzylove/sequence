@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { looksInternal } from "./useTx.js";
 import { fetchOpenMarkets, fetchResolvedMarkets, fetchSpotContext } from "../chain/markets.js";
 
 // Live DreamDEX market data. Open markets refresh on an interval because the
@@ -21,7 +22,7 @@ export function useMarkets({ refreshMs = 30000 } = {}) {
       setStatus("ready");
       setError(null);
     } catch (cause) {
-      setError(cause?.message || "Could not reach the Somnia markets indexer.");
+      setError(looksInternal(cause?.message || "") ? "Could not reach the Somnia markets indexer." : (cause?.message || "Could not reach the Somnia markets indexer."));
       setStatus("error");
     }
   }, []);

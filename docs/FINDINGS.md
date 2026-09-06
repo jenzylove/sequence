@@ -127,6 +127,36 @@ minimum impossible to reason about from inside a contract. A readable
 subscription health view — last delivery, missed count, attributed owner — would
 have made this entire investigation unnecessary.
 
+## 1c. Reactivity only reaches markets the oracle has actually answered
+
+**Observed.** A sequence triggered by a BTC 5m market never advanced, although
+the market finalized on chain with a real winner. Nothing was wrong with the
+subscription: the manager owned it, the stake was funded, the filter named the
+exact market. OracleHub simply never emitted `AnswerDelivered` for it, and for a
+twenty-minute stretch emitted nothing at all, network-wide.
+
+**A correction to our own first reading.** Sampling forty recent deliveries, we
+concluded the hub only ever answers 1h and 4h windows. Sampling again a few hours
+later returned 120s, 3598s, 3600s, 14400s and 86400s. The first sample was taken
+during a quiet stretch and we generalised from it. What is actually true is
+narrower and less tidy: **delivery is intermittent, and which series are being
+answered changes over time**. A market finalizing is not a promise that an
+`AnswerDelivered` accompanied it.
+
+**Why it matters.** Reactivity automation is not a property of Sequence alone; it
+is a property of whether the oracle answered that particular market. A rule
+waiting on a window the hub has not answered cannot be advanced by Reactivity no
+matter how correct the subscription is, and the permissionless `syncResolution`
+path is not a nicety there — it is the only thing that moves it.
+
+**What we did about it.** The hands-off proof reads the hub first, derives which
+series are currently being answered, and builds its chain only from those, so the
+test measures Sequence rather than the oracle's schedule. It also requires both
+successor markets to have real book depth, after a run traded into a 45-day
+contract whose book could not absorb the order and was correctly recorded as
+skipped rather than filled. The recovery path stays exactly where it is, and this
+is the concrete reason it earns its place.
+
 ## 2. Indexer schema drift broke a working query silently
 
 **Observed.** Our resolution fetcher was written against fields like

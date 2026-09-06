@@ -1,0 +1,76 @@
+{
+  "question": "Can one user activate a dependent two-step Sequence once and leave, with Somnia Reactivity advancing both settlements automatically?",
+  "answer": "Yes. Two dependent settlements two hours apart, both placed automatically, with no manual resolution call and no stake held by the user.",
+  "manager": "0x88a3b51437c959ec80123f8cd12be3ae817bf529",
+  "managerStake": "34921736157000000000",
+  "trader": "0x8c2E517fC6409EddE58b4D5875e13251E492bB84",
+  "traderStt": "3708440326000000000",
+  "vault": "0x34E1583Fc4753C2fCB3E2a818c020167A0b7A8Bc",
+  "registerTx": "0x710f64ebd005d073531df8215adb5cd813e4ae713c702c458627b38e13f60bd2",
+  "registerExplorer": "https://shannon-explorer.somnia.network/tx/0x710f64ebd005d073531df8215adb5cd813e4ae713c702c458627b38e13f60bd2",
+  "subscriptions": [
+    {
+      "subscriptionId": "16421932",
+      "market": "0x0000000000000000000000000000000000000000000000000000000000014ebd",
+      "owner": "0x88a3b51437C959ec80123f8cD12be3ae817bF529",
+      "handler": "0x34E1583Fc4753C2fCB3E2a818c020167A0b7A8Bc"
+    },
+    {
+      "subscriptionId": "16421933",
+      "market": "0x0000000000000000000000000000000000000000000000000000000000014e29",
+      "owner": "0x88a3b51437C959ec80123f8cD12be3ae817bF529",
+      "handler": "0x34E1583Fc4753C2fCB3E2a818c020167A0b7A8Bc"
+    }
+  ],
+  "steps": {
+    "0x25dc86b85e994af6b3bb292e233eaa61b50e4ba6334a7fc180c7e1a3b4171e3f": "PLACED",
+    "0xda9622d0f427935f6463991fb7b0a2424a63d55f2be15a17acbb48ed4bccda7a": "PLACED"
+  },
+  "timeline": [
+    {
+      "at": "2026-09-06T10:00:01.000Z",
+      "event": "Triggered",
+      "txHash": "0x035a66e4c8f854de994e2fd84c1b0bbf243092401b70690e3a924c854684b27e",
+      "block": "481156527"
+    },
+    {
+      "at": "2026-09-06T10:00:01.000Z",
+      "event": "Placed",
+      "txHash": "0x035a66e4c8f854de994e2fd84c1b0bbf243092401b70690e3a924c854684b27e",
+      "block": "481156527"
+    },
+    {
+      "at": "2026-09-06T10:00:01.000Z",
+      "event": "StepArmed",
+      "txHash": "0x035a66e4c8f854de994e2fd84c1b0bbf243092401b70690e3a924c854684b27e",
+      "block": "481156527"
+    },
+    {
+      "at": "2026-09-06T10:00:01.000Z",
+      "event": "ChainAdvanced",
+      "txHash": "0x035a66e4c8f854de994e2fd84c1b0bbf243092401b70690e3a924c854684b27e",
+      "block": "481156527"
+    },
+    {
+      "at": "2026-09-06T12:00:02.000Z",
+      "event": "ExposureReleased",
+      "txHash": "0xbbb54e73bcf2f3de7aa13f5ecbed5c6045091f8ce152da1093685e6bfcab0113",
+      "block": "481228514"
+    },
+    {
+      "at": "2026-09-06T12:00:02.000Z",
+      "event": "Triggered",
+      "txHash": "0xbbb54e73bcf2f3de7aa13f5ecbed5c6045091f8ce152da1093685e6bfcab0113",
+      "block": "481228514"
+    },
+    {
+      "at": "2026-09-06T12:00:02.000Z",
+      "event": "Placed",
+      "txHash": "0xbbb54e73bcf2f3de7aa13f5ecbed5c6045091f8ce152da1093685e6bfcab0113",
+      "block": "481228514"
+    }
+  ],
+  "manualResolutionCalls": 0,
+  "note": "Reconstructed from chain: the watcher process died on a transient RPC read after the second placement. Every field here is read back from Somnia Shannon.",
+  "provenAt": "2026-09-06T12:20:35.146Z"
+}

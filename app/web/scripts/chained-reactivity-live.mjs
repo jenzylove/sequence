@@ -84,6 +84,44 @@ const funded = await send(funderWallet, {
 console.log(`fresh trader ${user.address} (${stt(await pub.getBalance({ address: user.address }))})`);
 console.log(`vault ${vault}, funded ${usd(5_000000n)}`);
 
+// ---- which cadences does the oracle actually deliver for? ------------------
+//
+// Reactivity fires on OracleHub's AnswerDelivered. Not every market produces
+// one: watching the hub for several hours, only the longer windows do, while the
+// one- and five-minute contracts finalize through another path and emit nothing
+// the subscription could match. A chain built on those can never advance
+// automatically no matter how correct the plumbing is, so this reads the hub
+// first and only builds the proof on cadences it can actually see.
+async function deliverableCadences() {
+  const { parseAbiItem } = await import("viem");
+  const AD = parseAbiItem(
+    "event AnswerDelivered(uint256 indexed questionId, bytes32 indexed marketId, uint32 adapterId, uint256[] payoutNumerators, bool isVoid)",
+  );
+  const ORACLE_HUB = "0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b";
+  const latest = await pub.getBlockNumber();
+  const seen = [];
+  for (let back = 0n; back < 200000n && seen.length < 40; back += 1000n) {
+    const to = latest - back;
+    try {
+      seen.push(...await pub.getLogs({ address: ORACLE_HUB, event: AD, fromBlock: to - 999n, toBlock: to }));
+    } catch { /* window unavailable */ }
+  }
+  const ids = [...new Set(seen.map((l) => l.topics[2]))];
+  if (!ids.length) return null;
+  const res = await fetch(SHANNON.indexer, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      query: "query($ids:[String!]){ Market(where:{marketId:{_in:$ids}}){ intervalSec } }",
+      variables: { ids },
+    }),
+  }).then((r) => r.json()).catch(() => null);
+  const cadences = new Set((res?.data?.Market ?? []).map((m) => Number(m.intervalSec)).filter(Boolean));
+  return cadences.size ? cadences : null;
+}
+
+const deliverable = await deliverableCadences();
+console.log(`oracle delivers for cadences: ${deliverable ? [...deliverable].sort((x, y) => x - y).join("s, ") + "s" : "unknown (proceeding without the filter)"}`);
+
 // ---- find A -> B -> C, preferring the shortest real proof ------------------
 const open = await fetchOpenMarkets(100);
 const now = Math.floor(Date.now() / 1000);
@@ -94,6 +132,20 @@ for (const a of open.filter((m) => m.pool && (m.expiry || 0) - now > 90)) {
   const c = nextWindowFor(open, b);
   if (!c) continue;
   if (a.asset !== b.asset || b.asset !== c.asset) continue;
+  // A and B are the two markets whose settlement must wake the vault, so both
+  // have to be cadences the oracle actually answers. C is only ever traded into.
+  if (deliverable && (!deliverable.has(Number(a.intervalSec)) || !deliverable.has(Number(b.intervalSec)))) continue;
+  // Both successors have to be places an order can actually land. Tradable is not
+  // the same as liquid: the previous run traded step 2 into a 45-day contract
+  // whose book could not absorb the order 76 minutes after it was priced, and
+  // the vault correctly recorded that as skipped rather than claiming a fill.
+  //
+  // Note that C cannot be required to share B's cadence: only one window per
+  // series is open at a time, so a rolling chain necessarily steps across
+  // cadences. Liquidity is the real requirement, not sameness.
+  const [bBook, cBook] = await Promise.all([fetchBook(b.marketId), fetchBook(c.marketId)]);
+  if (!bBook?.depth || crossingPrice(bBook, false) == null) continue;
+  if (!cBook?.depth || crossingPrice(cBook, false) == null) continue;
   const [bOk, cOk] = await Promise.all([checkTradable(b.marketId, b.pool), checkTradable(c.marketId, c.pool)]);
   if (!bOk.ok || !cOk.ok) continue;
   candidates.push({ a, b, c });
@@ -161,7 +213,10 @@ console.log(txUrl(registered.hash));
 console.log("trader has left. The script will only READ until both settlements finish; it never calls syncResolution.");
 
 // ---- wait for both dependent steps -----------------------------------------
-const deadline = Date.now() + Math.max(40 * 60 * 1000, Math.min(3 * 60 * 60 * 1000, (b.expiry - now + 900) * 1000));
+// Wait as long as the second market actually needs. Capping at three hours meant
+// a chain whose second settlement was three and a half hours out timed out half
+// an hour short of the thing it was measuring.
+const deadline = Date.now() + Math.max(40 * 60 * 1000, Math.min(6 * 60 * 60 * 1000, (b.expiry - now + 900) * 1000));
 let last = "";
 while (Date.now() < deadline) {
   const [s1raw, s2raw] = await Promise.all([
