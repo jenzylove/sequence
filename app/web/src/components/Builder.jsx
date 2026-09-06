@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../sim.js";
 import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, purgeLegacyStrategy,
-  validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor, isCadenceSubstitution,
+  validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor, isCadenceSubstitution, seedWatching,
   autoNameFor, isAutoName,
 } from "../strategy.js";
 import { armStep, queueStep, ensurePoolAllowances, publicClient, registerAutomation } from "../chain/vault.js";
@@ -28,7 +28,7 @@ import {
 //   what am I watching, what happens if it goes up, what if it goes down,
 //   how much can I lose, and what exactly happens after I activate.
 // Contract vocabulary lives only under "Onchain details".
-export default function Builder({ markets, vault, wallet, initialDraft = null, onWallet, onExit, onActivated }) {
+export default function Builder({ markets, vault, wallet, initialDraft = null, initialMarket = null, onWallet, onExit, onActivated }) {
   const [strategy, setStrategy] = useState(() => initialDraft || latestDraft(wallet.account));
   const [selected, setSelected] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
@@ -52,13 +52,34 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
 
   useEffect(() => {
     if (strategy || markets.status !== "ready" || markets.open.length < 2) return;
-    const seeded = seedFromMarkets(markets.open);
+    // A market picked on the dashboard should be the one being watched here,
+    // rather than whatever the seeder would have chosen on its own.
+    const picked = initialMarket
+      && markets.open.find((m) => m.marketId === initialMarket.marketId);
+    const seeded = picked ? seedWatching(markets.open, picked) : seedFromMarkets(markets.open);
     if (vault.state?.bankroll > 0n) seeded.bankroll = vault.state.bankroll;
     if (vault.state?.maxOutstanding > 0n) seeded.maxOutstanding = vault.state.maxOutstanding;
     setStrategy(seeded);
-  }, [strategy, markets.status, markets.open, vault.state]);
+  }, [strategy, markets.status, markets.open, vault.state, initialMarket]);
 
   useEffect(() => { if (initialDraft) setStrategy(initialDraft); }, [initialDraft]);
+
+  // Picking a market on the dashboard is an explicit instruction, so it wins
+  // over whatever draft happened to be restored. Without this the builder kept
+  // the old sequence and you watched ETH after clicking BTC.
+  useEffect(() => {
+    if (!initialMarket || markets.status !== "ready") return;
+    const picked = markets.open.find((m) => m.marketId === initialMarket.marketId);
+    if (!picked) return;
+    setStrategy((cur) => {
+      if (cur?.steps?.[0]?.triggerMarketId === picked.marketId) return cur;
+      const seeded = seedWatching(markets.open, picked);
+      if (vault.state?.bankroll > 0n) seeded.bankroll = vault.state.bankroll;
+      if (vault.state?.maxOutstanding > 0n) seeded.maxOutstanding = vault.state.maxOutstanding;
+      return seeded.steps.length ? seeded : cur;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMarket, markets.status, markets.open]);
   // Persist only under the connected wallet. There is no global copy, so
   // switching accounts cannot restore the previous one's work.
   useEffect(() => { purgeLegacyStrategy(); }, []);

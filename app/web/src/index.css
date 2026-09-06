@@ -283,3 +283,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 /* The market a rule is about, shown before the rule. */
 .market-panel { border: 1px solid #ece9ef; border-radius: 4px; background: #fff; padding: 20px 22px; }
+
+/* A market tile that does something should look like it does. */
+.market-tile.is-clickable { cursor: pointer; transition: border-color .2s ease, transform .2s ease; }
+.market-tile.is-clickable:hover { border-color: #c9bff0; transform: translateY(-1px); }
+.market-tile.is-clickable:focus-visible { outline: 2px solid #8b72e8; outline-offset: 2px; }

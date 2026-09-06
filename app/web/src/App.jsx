@@ -33,6 +33,8 @@ export default function App() {
   const [walletReason, setWalletReason] = useState(null);
   const [pendingView, setPendingView] = useState(null);
   const [editing, setEditing] = useState(null);
+  // A market picked from the dashboard, so the builder opens on that one.
+  const [seedMarket, setSeedMarket] = useState(null);
 
   const wallet = useWallet();
   const markets = useMarkets();
@@ -60,8 +62,9 @@ export default function App() {
     setWalletOpen(true);
   };
 
-  const startBuilding = (draft = null) => {
+  const startBuilding = (draft = null, watch = null) => {
     setEditing(draft);
+    setSeedMarket(watch);
     if (!connected) {
       askToConnect("Connect a wallet to build a sequence. You approve every rule yourself, and nothing moves until you do.", "build");
       return;
@@ -120,7 +123,7 @@ export default function App() {
           markets={markets}
           vault={vault}
           wallet={wallet}
-          onNewSequence={() => startBuilding()}
+          onNewSequence={(watch) => startBuilding(null, watch && watch.marketId ? watch : null)}
           onEditDraft={(draft) => startBuilding(draft)}
           onOpenDetails={() => show("details")}
         />
@@ -132,6 +135,7 @@ export default function App() {
           vault={vault}
           wallet={wallet}
           initialDraft={editing}
+          initialMarket={seedMarket}
           onWallet={() => askToConnect(null, null)}
           onExit={() => show("home")}
           onActivated={() => show("home")}

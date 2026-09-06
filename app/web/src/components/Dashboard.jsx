@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import MarketContext from "./MarketContext.jsx";
 import ScreenHeader from "./ScreenHeader.jsx";
 import LimitDialog from "./LimitDialog.jsx";
-import { statusCopy, bucketFor, money, countdown, marketName } from "../lib/language.js";
+import { statusCopy, bucketFor, money, countdown, marketName, resultFor, totalResult } from "../lib/language.js";
 import { explainEvent } from "../lib/command.js";
 import { loadDrafts, removeDraft } from "../lib/store.js";
 import { cancelStep, syncResolution, redeemPosition } from "../chain/vault.js";
@@ -42,6 +42,8 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
   const onchain = vault.steps.filter((s) => s.exists);
   const active = onchain.filter((s) => bucketFor(s.statusLabel) === "active");
   const completed = onchain.filter((s) => bucketFor(s.statusLabel) === "completed");
+  // Declared after `completed` exists: reading it earlier is a dead zone.
+  const result = totalResult(completed, vault.events);
   const counts = { active: active.length, draft: drafts.length, completed: completed.length };
 
   // Open on whichever list actually has something in it.
@@ -170,6 +172,17 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
               <div className="mt-1.5 text-[20px] font-extrabold tracking-[-.04em] text-[#40906b]">{money(headroom)}</div>
             </div>
             <div className="h-8 w-px bg-[#e5e1e8]" />
+            {result.settled > 0 && (
+              <>
+                <div className="h-8 w-px bg-[#e5e1e8]" />
+                <div>
+                  <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Result so far</div>
+                  <div className={`mt-1.5 text-[20px] font-extrabold tracking-[-.04em] ${result.net >= 0n ? "text-[#40906b]" : "text-[#dc6e58]"}`}>
+                    {result.net >= 0n ? "+" : "−"}{money(result.net < 0n ? -result.net : result.net)}
+                  </div>
+                </div>
+              </>
+            )}
             <div>
               <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Balance</div>
               <div className="mt-1.5 flex items-baseline gap-2">
@@ -205,8 +218,8 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
         )}
 
         <div className="mt-8">
-          <div className="micro-label mb-4">Markets right now</div>
-          <MarketContext markets={markets} />
+          <div className="micro-label mb-4">Markets right now · pick one to build on</div>
+          <MarketContext markets={markets} onPick={(m) => onNewSequence(m)} />
         </div>
 
         <div className="sequence-panel mt-10">
@@ -326,18 +339,36 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
               completed.length === 0
                 ? (claimable.length > 0 ? null : <Empty>Nothing has finished yet. Once a market settles, the result lands here.</Empty>)
                 : <div className="space-y-3">
-                    {completed.map((s) => {
+                    {(() => { const seen = new Set(); return completed.map((s) => {
                       const copy = statusCopy(s.statusLabel);
+                      const r = resultFor(s, vault.events, seen);
                       return (
                         <div key={s.stepId} className="sequence-row">
                           <div>
                             <div className="text-[12px] font-bold text-[#252229]">{s.strategy || "Sequence"}</div>
                             <div className="mt-1.5 text-[10px] text-[#817c86]">{copy.blurb}</div>
+                            {/* What it did to the money, which is the point. */}
+                            {r.kind === "settled" && (
+                              <div className="mt-2 text-[10px] text-[#817c86]">
+                                Put in {money(r.spent)} · got back {money(r.returned)} ·{" "}
+                                <b className={`font-bold ${r.net >= 0n ? "text-[#40906b]" : "text-[#dc6e58]"}`}>
+                                  {r.net >= 0n ? "+" : "−"}{money(r.net < 0n ? -r.net : r.net)}
+                                </b>
+                              </div>
+                            )}
+                            {r.kind === "open" && (
+                              <div className="mt-2 text-[10px] text-[#817c86]">
+                                Put in {money(r.spent)} · waiting on this market to settle
+                              </div>
+                            )}
+                            {r.kind === "no-trade" && (
+                              <div className="mt-2 text-[10px] text-[#40906b]">Nothing was risked.</div>
+                            )}
                           </div>
                           <span className={`status-pill ${copy.tone}`}>{copy.label}</span>
                         </div>
                       );
-                    })}
+                    }); })()}
                   </div>
             )}
           </div>

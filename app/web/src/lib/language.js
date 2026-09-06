@@ -11,7 +11,7 @@ export const STATUS_COPY = {
   TRIGGERED: { label: "Settling", tone: "live", blurb: "The market just settled. Working out the next trade." },
   PLACED: { label: "Order placed", tone: "done", blurb: "The follow-on order was accepted by the market." },
   PENDING: { label: "Queued", tone: "draft", blurb: "Waiting on the step before it. It only starts watching if that one trades." },
-  SKIPPED: { label: "Stood down", tone: "done", blurb: "Your rules said not to trade this one." },
+  SKIPPED: { label: "No trade", tone: "done", blurb: "Your rules said not to trade this one, so nothing was risked." },
   EXPIRED: { label: "Expired", tone: "done", blurb: "The window closed before it could run." },
   CANCELLED: { label: "Cancelled", tone: "done", blurb: "You called it off." },
 };
@@ -192,4 +192,61 @@ export function describePlan(strategy, markets = []) {
     return `As configured this sequence never trades: both results are set to stop. Change one of them to buy a side.`;
   }
   return `When ${watch} settles, Sequence ${up} if it closes up, or ${down} if it closes down.${more} You can never have more than ${money(strategy.maxOutstanding)} at risk at once.`;
+}
+
+// What a finished sequence actually did to your money.
+//
+// The Finished tab used to show a status word and nothing else, which is a
+// strange thing for a trading product: it told you the rule ran but never what
+// it made. This reads the account's own events for the answer.
+//
+//   spent     the notional the vault committed when it placed the order
+//   returned  the collateral that came back when the position was redeemed
+//
+// Both are facts the vault emitted, not estimates.
+export function resultFor(step, events = [], consumed = null) {
+  const terminalNoTrade = ["SKIPPED", "EXPIRED", "CANCELLED"];
+  if (terminalNoTrade.includes(step.statusLabel)) {
+    return { kind: "no-trade", spent: 0n, returned: 0n };
+  }
+
+  const placed = events.find((e) => e.name === "Placed" && e.args?.stepId === step.stepId);
+  const spent = placed?.args?.notional ?? 0n;
+  if (!spent) return { kind: "unknown", spent: 0n, returned: 0n };
+
+  // Redemption is keyed by the market the position is held in, which is the
+  // step's successor rather than the market it watched.
+  //
+  // Two sequences can trade into the same market, so a redemption also has to
+  // come after the order it settles, and may only be counted once. Matching on
+  // the market alone let a second, still-open sequence claim the first one's
+  // payout and report a profit that never happened.
+  const after = (e) => !placed?.blockNumber || !e.blockNumber
+    || BigInt(e.blockNumber) >= BigInt(placed.blockNumber);
+  const key = (e) => `${e.txHash ?? ""}:${e.logIndex ?? ""}:${e.args?.marketId ?? ""}`;
+
+  const redeemed = events.find((e) => e.name === "Redeemed"
+    && e.args?.marketId?.toLowerCase() === step.successorMarketId?.toLowerCase()
+    && after(e)
+    && !(consumed && consumed.has(key(e))));
+
+  if (!redeemed) return { kind: "open", spent, returned: 0n };
+  if (consumed) consumed.add(key(redeemed));
+  const returned = redeemed.args?.collateral ?? 0n;
+  return { kind: "settled", spent, returned, net: returned - spent };
+}
+
+// The same question across every finished sequence, for the one number a trader
+// looks for first.
+export function totalResult(steps = [], events = []) {
+  // One shared ledger of redemptions already counted, so the same payout cannot
+  // be attributed to two sequences.
+  const consumed = new Set();
+  let spent = 0n; let returned = 0n; let settled = 0;
+  for (const s of steps) {
+    const r = resultFor(s, events, consumed);
+    if (r.kind !== "settled") continue;
+    spent += r.spent; returned += r.returned; settled += 1;
+  }
+  return { spent, returned, net: returned - spent, settled };
 }

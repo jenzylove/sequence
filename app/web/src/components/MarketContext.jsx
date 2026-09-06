@@ -4,7 +4,7 @@ import { settlePhrase, marketName, asOdds } from "../lib/language.js";
 // Live market context, kept deliberately thin: the price the market is trading
 // at, when the next window settles, and what the book currently implies. All of
 // it is real indexer data. Sequence never predicts any of these numbers.
-export default function MarketContext({ markets }) {
+export default function MarketContext({ markets, onPick }) {
   const [, tick] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(() => tick((n) => n + 1), 1000);
@@ -37,7 +37,15 @@ export default function MarketContext({ markets }) {
         const odds = market ? asOdds(market.lastPrice) : null;
         const drift = price?.mark ? price.price - price.mark : null;
         return (
-          <div key={asset} className="market-tile">
+          <div
+            key={asset}
+            className={`market-tile${onPick && market ? " is-clickable" : ""}`}
+            role={onPick && market ? "button" : undefined}
+            tabIndex={onPick && market ? 0 : undefined}
+            onClick={onPick && market ? () => onPick(market) : undefined}
+            onKeyDown={onPick && market ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(market); } } : undefined}
+            aria-label={onPick && market ? `Build a sequence watching ${marketName(market)}` : undefined}
+          >
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-[11px] font-bold tracking-[-.02em] text-[#242128]">{asset}</span>
               {price && (

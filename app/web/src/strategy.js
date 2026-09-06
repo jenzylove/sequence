@@ -113,6 +113,19 @@ export function isCadenceSubstitution(after, next) {
   return normaliseInterval(after.intervalSec) !== normaliseInterval(next.intervalSec);
 }
 
+// Seed a sequence that watches one specific market, for when a trader picked it
+// rather than letting the builder choose. Falls back to the ordinary seed if
+// that market has nothing to roll into.
+export function seedWatching(markets, watch) {
+  const open = (markets || []).filter((m) => m.pool && m.marketId);
+  const successor = nextWindowFor(open, watch);
+  if (!watch || !successor) return seedFromMarkets(markets);
+  const strat = emptyStrategy();
+  strat.steps = [makeStep(1, { triggerMarket: watch, successorMarket: successor })];
+  strat.name = autoNameFor(watch.asset);
+  return strat;
+}
+
 // Seed from real open markets: watch the soonest window that has something to
 // roll into, and trade into that. Never returns a stepless strategy while two
 // markets are open, because a builder with no step is a dead end.
