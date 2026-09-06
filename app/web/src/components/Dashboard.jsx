@@ -6,7 +6,7 @@ import { statusCopy, bucketFor, money, countdown, marketName, resultFor, totalRe
 import { explainEvent } from "../lib/command.js";
 import { loadDrafts, removeDraft } from "../lib/store.js";
 import { cancelStep, syncResolution, redeemPosition } from "../chain/vault.js";
-import { findClaimablePositions } from "../chain/positions.js";
+import { findClaimablePositions, valuePosition } from "../chain/positions.js";
 import { useTx } from "../hooks/useTx.js";
 import FundPanel from "./FundPanel.jsx";
 import Automation from "./Automation.jsx";
@@ -27,6 +27,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
   const [drafts, setDrafts] = useState(() => loadDrafts(wallet.account));
   const [limitOpen, setLimitOpen] = useState(false);
   const [fundOpen, setFundOpen] = useState(false);
+  const [positions, setPositions] = useState(new Map());
   const [acting, setActing] = useState(null);
   const tx = useTx();
   const busy = tx.busy ? acting : null;
@@ -43,7 +44,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
   const active = onchain.filter((s) => bucketFor(s.statusLabel) === "active");
   const completed = onchain.filter((s) => bucketFor(s.statusLabel) === "completed");
   // Declared after `completed` exists: reading it earlier is a dead zone.
-  const result = totalResult(completed, vault.events);
+  const result = totalResult([...completed, ...active], vault.events, positions);
   const counts = { active: active.length, draft: drafts.length, completed: completed.length };
 
   // Open on whichever list actually has something in it.
@@ -96,6 +97,17 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
     findClaimablePositions(vault.address)
       .then((found) => { if (live) setClaimable(found); })
       .catch(() => { if (live) setClaimable([]); });
+
+    // Value what is held but not collected, so a win shows before it is
+    // redeemed and a loss shows the moment the market resolves.
+    (async () => {
+      const markets = [...new Set(onchain.map((s) => s.successorMarketId).filter(Boolean))];
+      const entries = await Promise.all(markets.map(async (m) => {
+        const v = await valuePosition(vault.address, m).catch(() => null);
+        return v ? [m.toLowerCase(), v] : null;
+      }));
+      if (live) setPositions(new Map(entries.filter(Boolean)));
+    })();
     return () => { live = false; };
   }, [vault.address, vault.status, completed.length]);
 
@@ -172,14 +184,20 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
               <div className="mt-1.5 text-[20px] font-extrabold tracking-[-.04em] text-[#40906b]">{money(headroom)}</div>
             </div>
             <div className="h-8 w-px bg-[#e5e1e8]" />
-            {result.settled > 0 && (
+            {(result.settled > 0 || result.openCount > 0) && (
               <>
                 <div className="h-8 w-px bg-[#e5e1e8]" />
                 <div>
-                  <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Result so far</div>
-                  <div className={`mt-1.5 text-[20px] font-extrabold tracking-[-.04em] ${result.net >= 0n ? "text-[#40906b]" : "text-[#dc6e58]"}`}>
-                    {result.net >= 0n ? "+" : "−"}{money(result.net < 0n ? -result.net : result.net)}
+                  <div className="text-[8px] font-bold uppercase tracking-[.12em] text-[#aaa5ae]">Result</div>
+                  <div className={`mt-1.5 text-[20px] font-extrabold tracking-[-.04em] ${result.net_total >= 0n ? "text-[#40906b]" : "text-[#dc6e58]"}`}>
+                    {result.net_total >= 0n ? "+" : "−"}{money(result.net_total < 0n ? -result.net_total : result.net_total)}
                   </div>
+                  {result.openCount > 0 && (
+                    <div className="mt-1 text-[9px] text-[#a19ca5]">
+                      {money(result.net < 0n ? -result.net : result.net)} settled ·{" "}
+                      {money(result.openNet < 0n ? -result.openNet : result.openNet)} not collected
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -341,7 +359,7 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
                 : <div className="space-y-3">
                     {(() => { const seen = new Set(); return completed.map((s) => {
                       const copy = statusCopy(s.statusLabel);
-                      const r = resultFor(s, vault.events, seen);
+                      const r = resultFor(s, vault.events, seen, positions.get(s.successorMarketId?.toLowerCase()));
                       return (
                         <div key={s.stepId} className="sequence-row">
                           <div>
@@ -354,6 +372,28 @@ export default function Dashboard({ markets, vault, wallet, onNewSequence, onEdi
                                 <b className={`font-bold ${r.net >= 0n ? "text-[#40906b]" : "text-[#dc6e58]"}`}>
                                   {r.net >= 0n ? "+" : "−"}{money(r.net < 0n ? -r.net : r.net)}
                                 </b>
+                              </div>
+                            )}
+                            {r.kind === "won" && (
+                              <div className="mt-2 text-[10px] text-[#817c86]">
+                                Put in {money(r.spent)} · worth {money(r.value)} ·{" "}
+                                <b className="font-bold text-[#40906b]">+{money(r.net)}</b>{" "}
+                                <span className="text-[#a19ca5]">not collected yet</span>
+                              </div>
+                            )}
+                            {r.kind === "lost" && (
+                              <div className="mt-2 text-[10px] text-[#817c86]">
+                                Put in {money(r.spent)} · this side did not win ·{" "}
+                                <b className="font-bold text-[#dc6e58]">−{money(r.spent)}</b>
+                              </div>
+                            )}
+                            {r.kind === "running" && (
+                              <div className="mt-2 text-[10px] text-[#817c86]">
+                                Put in {money(r.spent)} · worth about {money(r.value)} now ·{" "}
+                                <b className={`font-bold ${r.net >= 0n ? "text-[#40906b]" : "text-[#dc6e58]"}`}>
+                                  {r.net >= 0n ? "+" : "−"}{money(r.net < 0n ? -r.net : r.net)}
+                                </b>{" "}
+                                <span className="text-[#a19ca5]">still trading</span>
                               </div>
                             )}
                             {r.kind === "open" && (

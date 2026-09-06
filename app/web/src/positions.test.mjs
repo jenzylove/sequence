@@ -55,7 +55,11 @@ mock.module("./chain/vault.js", {
 
 // The settled feed does not know about B, so discovery must come from the vault.
 mock.module("./chain/markets.js", {
-  exports: { fetchResolvedMarkets: async () => [] },
+  exports: {
+    fetchResolvedMarkets: async () => [],
+    // positions.js now marks open positions against the live book.
+    fetchBook: async () => ({ bestBidYes: null, bestBidNo: null, bestAskYes: null, bestAskNo: null, depth: 0 }),
+  },
 });
 
 const { tradedMarketIds, findClaimablePositions } = await import("./chain/positions.js");

@@ -204,7 +204,7 @@ export function describePlan(strategy, markets = []) {
 //   returned  the collateral that came back when the position was redeemed
 //
 // Both are facts the vault emitted, not estimates.
-export function resultFor(step, events = [], consumed = null) {
+export function resultFor(step, events = [], consumed = null, position = null) {
   const terminalNoTrade = ["SKIPPED", "EXPIRED", "CANCELLED"];
   if (terminalNoTrade.includes(step.statusLabel)) {
     return { kind: "no-trade", spent: 0n, returned: 0n };
@@ -230,7 +230,23 @@ export function resultFor(step, events = [], consumed = null) {
     && after(e)
     && !(consumed && consumed.has(key(e))));
 
-  if (!redeemed) return { kind: "open", spent, returned: 0n };
+  if (!redeemed) {
+    // Not collected yet. A position is not nothing until it is redeemed: if the
+    // market has settled it is either a payout waiting or a loss already taken,
+    // and if it is still trading it is worth what the book would pay.
+    if (position) {
+      if (position.settled) {
+        const value = position.claimable ?? 0n;
+        return value > 0n
+          ? { kind: "won", spent, returned: 0n, value, net: value - spent }
+          : { kind: "lost", spent, returned: 0n, value: 0n, net: -spent };
+      }
+      if (position.value !== null && position.value !== undefined) {
+        return { kind: "running", spent, returned: 0n, value: position.value, net: position.value - spent };
+      }
+    }
+    return { kind: "open", spent, returned: 0n };
+  }
   if (consumed) consumed.add(key(redeemed));
   const returned = redeemed.args?.collateral ?? 0n;
   return { kind: "settled", spent, returned, net: returned - spent };
@@ -238,15 +254,26 @@ export function resultFor(step, events = [], consumed = null) {
 
 // The same question across every finished sequence, for the one number a trader
 // looks for first.
-export function totalResult(steps = [], events = []) {
+export function totalResult(steps = [], events = [], positions = null) {
   // One shared ledger of redemptions already counted, so the same payout cannot
   // be attributed to two sequences.
   const consumed = new Set();
   let spent = 0n; let returned = 0n; let settled = 0;
+  // Value not yet collected: won-but-uncollected, and open positions marked to
+  // the book. Kept apart from realised money so the two are never confused.
+  let openValue = 0n; let openCost = 0n; let openCount = 0;
+
   for (const s of steps) {
-    const r = resultFor(s, events, consumed);
-    if (r.kind !== "settled") continue;
-    spent += r.spent; returned += r.returned; settled += 1;
+    const pos = positions?.get?.(s.successorMarketId?.toLowerCase()) ?? null;
+    const r = resultFor(s, events, consumed, pos);
+    if (r.kind === "settled") { spent += r.spent; returned += r.returned; settled += 1; continue; }
+    if (r.kind === "won" || r.kind === "running" || r.kind === "lost") {
+      openValue += r.value ?? 0n; openCost += r.spent; openCount += 1;
+    }
   }
-  return { spent, returned, net: returned - spent, settled };
+  return {
+    spent, returned, net: returned - spent, settled,
+    openValue, openCost, openCount, openNet: openValue - openCost,
+    net_total: (returned - spent) + (openValue - openCost),
+  };
 }

@@ -67,3 +67,48 @@ test("the total only counts sequences that actually settled", () => {
 test("a skipped sequence is called a no trade, not 'stood down'", () => {
   assert.equal(statusCopy("SKIPPED").label, "No trade");
 });
+
+// ---- value you have not collected yet --------------------------------------
+//
+// A won position is money before it is redeemed, and a losing one is a loss the
+// moment the market resolves. Showing neither until collection made the account
+// look flat when it was not.
+
+const won = (claimable) => ({ settled: true, claimable });
+const running = (value) => ({ settled: false, value });
+
+test("a won but uncollected position is counted at its payout", () => {
+  const s = step();
+  const r = resultFor(s, [placed(s.stepId, 2_000000n)], null, won(4_366000n));
+  assert.equal(r.kind, "won");
+  assert.equal(r.value, 4_366000n);
+  assert.equal(r.net, 2_366000n, "the gain is real before it is collected");
+});
+
+test("a losing position is a loss straight away, not a blank", () => {
+  const s = step();
+  const r = resultFor(s, [placed(s.stepId, 2_000000n)], null, won(0n));
+  assert.equal(r.kind, "lost");
+  assert.equal(r.net, -2_000000n);
+});
+
+test("an open position is marked at what the book would pay", () => {
+  const s = step();
+  const r = resultFor(s, [placed(s.stepId, 2_000000n)], null, running(1_200000n));
+  assert.equal(r.kind, "running");
+  assert.equal(r.net, -800000n, "down on the mark, and said so");
+});
+
+test("realised and uncollected are totalled separately", () => {
+  const a = step({ stepId: "0xaa", successorMarketId: MARKET });
+  const b = step({ stepId: "0xbb", successorMarketId: `0x${"cd".repeat(32)}` });
+  const events = [
+    placed("0xaa", 2_000000n), redeemed(MARKET, 3_000000n),   // realised +1.00
+    placed("0xbb", 1_000000n),                                 // uncollected
+  ];
+  const positions = new Map([[`0x${"cd".repeat(32)}`, won(2_500000n)]]);
+  const t = totalResult([a, b], events, positions);
+  assert.equal(t.net, 1_000000n, "realised stays realised");
+  assert.equal(t.openNet, 1_500000n, "uncollected is tracked apart");
+  assert.equal(t.net_total, 2_500000n, "and the two add up");
+});

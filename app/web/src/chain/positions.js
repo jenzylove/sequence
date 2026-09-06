@@ -21,7 +21,7 @@ import {
 } from "@somnia-chain/markets-sdk";
 import { publicClient, readVaultEvents } from "./vault.js";
 import { vaultAbi } from "./abi.js";
-import { fetchResolvedMarkets } from "./markets.js";
+import { fetchResolvedMarkets, fetchBook } from "./markets.js";
 
 export const SDK_ADDRESSES = SOMNIA_TESTNET_ADDRESSES;
 
@@ -170,4 +170,47 @@ export async function findClaimablePositions(vault, { limit = 25, marketIds } = 
     });
   }
   return found;
+}
+
+// What a position is worth right now, settled or not.
+//
+// A won position that has not been collected is still money, and a losing one is
+// a loss the moment the market resolves — showing neither until collection made
+// the account look flat when it was not. This values both.
+//
+//   settled + winner held  -> claimable, the exact payout waiting
+//   settled + loser held   -> zero, and the cost is a realised loss
+//   still open             -> marked at what the book would pay for it now
+//
+// The mark uses the best *bid* for the side held, because that is what someone
+// would actually pay, not the midpoint or the ask.
+export async function valuePosition(vault, marketId) {
+  if (!vault || !marketId) return null;
+  try {
+    const record = await readMarketRecord(marketId);
+    if (!record.known) return null;
+    const settlement = await readSettlement(record.yesId);
+    const held = await readOutcomeBalances(vault, { ...record, outcomeToken: settlement.outcomeToken });
+    const size = held.yes + held.no;
+    if (size === 0n) return null;
+    const side = held.yes > 0n ? "YES" : "NO";
+
+    if (settlement.finalized) {
+      const claimable = settlement.voided
+        ? size
+        : settlement.winner === 0 ? held.yes
+        : settlement.winner === 1 ? held.no
+        : 0n;
+      return { marketId, side, size, settled: true, voided: settlement.voided, value: claimable, claimable };
+    }
+
+    // Not settled: mark it against the live book.
+    const book = await fetchBook(marketId).catch(() => null);
+    const bid = side === "YES" ? book?.bestBidYes : book?.bestBidNo;
+    // price is a 6dp fraction, size is 6dp base units, so value = p*q/1e6.
+    const value = bid ? (bid * size) / 1000000n : null;
+    return { marketId, side, size, settled: false, value, marked: bid ?? null, claimable: 0n };
+  } catch {
+    return null;
+  }
 }
