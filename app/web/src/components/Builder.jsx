@@ -209,12 +209,14 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
   const hasAccount = !vault.needsVault && Boolean(vault.address);
   const isOwner = !hasAccount || vault.isOwner(wallet.account);
   const ready = wallet.connected && wallet.onShannon && isOwner
-    && !vault.state?.paused && errors.length === 0 && steps.length > 0;
+    && !vault.state?.paused && errors.length === 0 && steps.length > 0
+    && markets.status === "ready";
   const blocker = !wallet.connected
     ? "Connect your wallet to activate this."
     : !wallet.onShannon ? "Switch your wallet to the Somnia network."
     : !isOwner ? "This wallet does not control the trading account."
     : vault.state?.paused ? "Trading is paused. Resume it first."
+    : markets.status === "error" ? "Live market data is unavailable, so this cannot be activated safely yet."
     : errors.length ? errors[0].message
     : null;
 
@@ -394,6 +396,19 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
           backLabel="Back to your sequences"
         />
 
+        {/* A sequence built before the feed died stays on screen, so the page has
+            to say the prices behind it are stale rather than let it look live. */}
+        {markets.status === "error" && (
+          <div className="mt-6 rounded-sm border border-[#f0dcc6] bg-[#fdf8f1] p-4" role="alert">
+            <div className="text-[11px] font-bold text-[#8a6a34]">Live market data is unavailable</div>
+            <p className="mt-1.5 text-[10px] leading-[1.65] text-[#7d6b52]">
+              The Somnia markets indexer is not answering, so the windows and prices below may be out of date.
+              Activation is paused until it returns. Nothing you have set up is lost.{" "}
+              <button onClick={markets.reload} className="font-bold text-[#6f58c2]">Retry now</button>
+            </p>
+          </div>
+        )}
+
         <CommandBar
           markets={markets}
           vault={vault}
@@ -409,7 +424,12 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, o
               <span className="h-2 w-2 rounded-full bg-[#8b72e8] shadow-[0_0_0_5px_rgba(139,114,232,.12)]" />
               <input aria-label="Sequence name" value={strategy.name} onChange={(e) => patch({ name: e.target.value })} className="w-[210px] bg-transparent text-[13px] font-bold tracking-[-.02em] text-[#242128] outline-none" />
             </div>
-            <span className="text-[10px] text-[#928d97]">{markets.status === "ready" ? `${watchable.length} markets open` : "Loading markets…"}</span>
+            <span className="text-[10px] text-[#928d97]">
+              {markets.status === "ready" ? `${watchable.length} markets open`
+                : markets.status === "error"
+                  ? <>Markets unavailable · <button onClick={markets.reload} className="font-bold text-[#6f58c2]">retry</button></>
+                  : "Loading markets…"}
+            </span>
           </div>
 
           <div className="grid lg:grid-cols-[1fr_320px]">
@@ -675,7 +695,8 @@ function BranchRow({ label, tone, value, onChange, detail, successorName }) {
       >
         {ACTION_CHOICES.map((c) => (
           <option key={c.value} value={c.value}>
-            {c.value === 255 ? "Stop — place nothing" : `${c.label} in the next ${successorName}`}
+            {c.value === 255 ? "Stop — place nothing"
+                : `${c.label} in the next ${successorName && successorName !== "a market" ? successorName : "window"}`}
           </option>
         ))}
       </select>

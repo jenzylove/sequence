@@ -157,7 +157,11 @@ export function branchActions(step, successorMarket) {
       return { stop: true, side: null, text: "Stop", verb: "stops and places nothing", size: "—" };
     }
     const side = action === 2 ? "NO" : "YES";
-    return { stop: false, side, text: `Buy ${side} in the next ${next}`, verb: `buys ${side} in the next ${next}`, size };
+    // `next` is a market name like "BTC 1h". When the market is not loaded we
+    // must not fall through to marketName's generic "a market", which produces
+    // "in the next a market".
+    const window_ = next && next !== "a market" ? next : "window";
+    return { stop: false, side, text: `Buy ${side} in the next ${window_}`, verb: `buys ${side} in the next ${window_}`, size };
   };
   return { yes: describe(step.actionOnWin0), no: describe(step.actionOnWin1) };
 }
