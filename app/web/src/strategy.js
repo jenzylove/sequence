@@ -132,14 +132,26 @@ export function seedWatching(markets, watch) {
 // Seed from real open markets: watch the soonest window that has something to
 // roll into, and trade into that. Never returns a stepless strategy while two
 // markets are open, because a builder with no step is a dead end.
+// The assets Sequence is built around. Everything else on the venue is still
+// tradable here, just not what we lead with.
+export const CORE_ASSETS = ["BTC", "ETH"];
+export const isCoreAsset = (asset) => CORE_ASSETS.includes(String(asset || "").toUpperCase());
+
 export function seedFromMarkets(markets) {
   const strat = emptyStrategy();
   const open = (markets || []).filter((m) => m.pool && m.marketId).sort((a, b) => (a.expiry || 0) - (b.expiry || 0));
   if (open.length < 2) return strat;
 
+  // Prefer the markets this product is about. DreamDEX also carries other
+  // people's contracts — an agent-NAV market turned up as the default once,
+  // asking whether "agent Alpha-Z closes session #3 with a higher NAV", which is
+  // a real market but not what somebody opening Sequence came to trade. They stay
+  // selectable; they just do not get to be the first thing you see.
   let trigger = null;
   let successor = null;
-  for (const candidate of open) {
+  const ordered = [...open].sort((a, b) =>
+    (isCoreAsset(b.asset) ? 1 : 0) - (isCoreAsset(a.asset) ? 1 : 0));
+  for (const candidate of ordered) {
     const next = nextWindowFor(open, candidate);
     if (next) { trigger = candidate; successor = next; break; }
   }

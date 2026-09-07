@@ -3,7 +3,7 @@ import { fmt } from "../sim.js";
 import {
   ORDER_TYPES, ACTION, ACTION_CHOICES, makeStep, seedFromMarkets, purgeLegacyStrategy,
   validate, notices, notionalOf, toVaultStep, onchainStepId, nextWindowFor, isCadenceSubstitution, seedWatching,
-  autoNameFor, isAutoName,
+  autoNameFor, isAutoName, isCoreAsset,
 } from "../strategy.js";
 import { armStep, queueStep, ensurePoolAllowances, publicClient, registerAutomation } from "../chain/vault.js";
 import { vaultAbi } from "../chain/abi.js";
@@ -430,8 +430,14 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
   // which is not a continuation by any measure a trader means. Splitting the
   // picker says so before a market is chosen, instead of accepting the choice
   // and then refusing to arm.
-  const startable = watchable.filter((m) => nextWindowFor(markets.open, m));
-  const deadEnd = watchable.filter((m) => !nextWindowFor(markets.open, m));
+  // BTC and ETH first: the venue carries other people's contracts too, and a
+  // trader looking for "BTC 5m" should not have to scroll past an agent-NAV
+  // market to find it.
+  const byRelevance = (a, b) =>
+    (isCoreAsset(b.asset) ? 1 : 0) - (isCoreAsset(a.asset) ? 1 : 0)
+    || (a.expiry || 0) - (b.expiry || 0);
+  const startable = watchable.filter((m) => nextWindowFor(markets.open, m)).sort(byRelevance);
+  const deadEnd = watchable.filter((m) => !nextWindowFor(markets.open, m)).sort(byRelevance);
 
   return (
     <section id="build" className="product-band">

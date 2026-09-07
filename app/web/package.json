@@ -16,7 +16,8 @@
     "verify:three": "node scripts/verify-three.mjs",
     "test:units": "node --test --experimental-test-module-mocks src/sizing.test.mjs src/scoping.test.mjs src/positions.test.mjs src/quickstart.test.mjs src/activation.test.mjs src/result.test.mjs",
     "check:amount": "node scripts/check-amount.mjs",
-    "fresh": "node scripts/fresh-wallet.mjs"
+    "fresh": "node scripts/fresh-wallet.mjs",
+    "verify:refs": "node scripts/verify-references.mjs"
   },
   "dependencies": {
     "@somnia-chain/reactivity": "^0.2.1",
