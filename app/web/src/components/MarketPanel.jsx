@@ -16,13 +16,28 @@ const cents = (p) => `$${(Number(p ?? 0n) / 1e6).toFixed(3)}`;
 export default function MarketPanel({ market, successor, book, spot }) {
   const [candles, setCandles] = useState(null);
 
+  // The chart used to load once and then sit there. On a 1m or 5m market that
+  // is most of the market's life spent showing a frozen line, which is the
+  // opposite of what a panel watching a live market is for.
+  //
+  // Poll at a rate the market itself sets: a fast window is worth re-reading
+  // every few seconds, a 45-day contract is not. Bounded at both ends so a
+  // short market cannot hammer the indexer and a long one still moves.
+  const cadence = market?.intervalSec || 0;
+  const pollMs = Math.min(120000, Math.max(5000, Math.round((cadence * 1000) / 20) || 15000));
+
   useEffect(() => {
     let live = true;
     setCandles(null);
     if (!market?.marketId) return undefined;
-    fetchCandles(market.marketId).then((c) => live && setCandles(c)).catch(() => live && setCandles([]));
-    return () => { live = false; };
-  }, [market?.marketId]);
+    const read = () =>
+      fetchCandles(market.marketId)
+        .then((c) => live && setCandles(c))
+        .catch(() => live && setCandles((prev) => prev ?? []));
+    read();
+    const timer = window.setInterval(read, pollMs);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [market?.marketId, pollMs]);
 
   const yes = book?.bestAskYes ?? market?.lastPrice ?? null;
   const no = yes != null ? PRICE_SCALE - yes : null;

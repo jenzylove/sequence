@@ -14,6 +14,28 @@ export function publicClient() {
   return createPublicClient({ chain: shannonChain, transport: http(SHANNON.rpc) });
 }
 
+// The exact field set SequenceVault.Step encodes to. Kept beside the calls that
+// do the encoding rather than in the strategy layer, so vault.js never has to
+// reach back into a module that already depends on it.
+export const VAULT_STEP_FIELDS = [
+  "status", "triggerMarketId", "pool", "price", "quantity", "expireNs",
+  "orderType", "actionOnWin0", "actionOnWin1", "notionalCap",
+  "successorMarketId", "nextStepId", "orderId", "winningOutcome",
+];
+
+/// Refuse to hand the ABI encoder a hole.
+///
+/// A missing numeric field becomes `BigInt(undefined)` deep inside viem, which
+/// reads as a bug in the wallet rather than in us. This names the field instead,
+/// before a wallet is ever opened.
+export function assertVaultStep(step, where = "this step") {
+  const missing = VAULT_STEP_FIELDS.filter((f) => step?.[f] === undefined || step?.[f] === null);
+  if (missing.length) {
+    throw new Error(`${where} is incomplete: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} missing.`);
+  }
+  return step;
+}
+
 export function stepIdFor(name) {
   return keccak256(toHex(name));
 }

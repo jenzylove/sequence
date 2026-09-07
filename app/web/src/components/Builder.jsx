@@ -107,6 +107,23 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
   const trigger = step ? marketById(step.triggerMarketId) : null;
   const successor = step ? marketById(step.successorMarketId) : null;
 
+  // The name follows whatever the sequence actually watches.
+  //
+  // Renaming only inside the market picker was not enough: a draft restored
+  // from storage, or a first step seeded before the market list arrived, kept
+  // whatever asset was current when it was first stamped. That is how "ETH
+  // sequence" ended up over a panel showing BTC. Deriving it from the first
+  // step's live market means it cannot drift, whichever path set the market.
+  const watchedAsset = marketById(steps[0]?.triggerMarketId)?.asset || null;
+  useEffect(() => {
+    if (!watchedAsset) return;
+    setStrategy((cur) => {
+      if (!cur || !isAutoName(cur.name)) return cur;
+      const wanted = autoNameFor(watchedAsset);
+      return cur.name === wanted ? cur : { ...cur, name: wanted };
+    });
+  }, [watchedAsset, setStrategy]);
+
   // Price the follow-on order against the live book rather than a fixed guess.
   // A binary contract quoted only in YES terms means a NO order priced at a
   // YES-looking number simply never crosses, and the order fills nothing.
@@ -408,6 +425,14 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
   const odds = trigger ? asOdds(trigger.lastPrice) : null;
   const watchable = markets.open.filter((m) => m.pool);
 
+  // Only one window per series is open at a time, so plenty of markets have
+  // nothing to continue into: watch a 1d and the only later contract is a 45d,
+  // which is not a continuation by any measure a trader means. Splitting the
+  // picker says so before a market is chosen, instead of accepting the choice
+  // and then refusing to arm.
+  const startable = watchable.filter((m) => nextWindowFor(markets.open, m));
+  const deadEnd = watchable.filter((m) => !nextWindowFor(markets.open, m));
+
   return (
     <section id="build" className="product-band">
       <div className="mx-auto max-w-[1280px] px-7 py-20 sm:px-12 lg:px-16 lg:py-24">
@@ -476,11 +501,20 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
                   onChange={(e) => chooseWatch(step.key, e.target.value)}
                 >
                   <option value="">Choose a market…</option>
-                  {watchable.map((m) => (
+                  {startable.map((m) => (
                     <option key={m.marketId} value={m.marketId}>
                       {marketName(m)}{marketShortAsk(m) ? ` · ${marketShortAsk(m)}` : ""} — {settlePhrase(m.expiry)}
                     </option>
                   ))}
+                  {deadEnd.length > 0 && (
+                    <optgroup label="No follow-on market open yet — cannot start a sequence">
+                      {deadEnd.map((m) => (
+                        <option key={m.marketId} value={m.marketId} disabled>
+                          {marketName(m)} — nothing open to trade into
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 {trigger && (
                   <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-[#7f7984]">
@@ -492,14 +526,6 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
               </Question>
 
               <Question n={2} title="What should happen when it settles?">
-                {successor && isCadenceSubstitution(trigger, successor) && (
-                  <p className="mb-3 rounded-sm border-l-[3px] border-[#ff9b7f] bg-[#fff8f4] p-3 text-[10px] leading-[1.6] text-[#8a5f47]">
-                    No {marketName(trigger)} window is open after this one, so the follow-on trade goes into
-                    the next {marketName(successor)} instead — a {intervalLabel(successor.intervalSec)} contract,
-                    settling {countdown(successor.expiry)}. That is the market it will actually trade, and the
-                    horizon it will actually run for.
-                  </p>
-                )}
                 <div className="space-y-3">
                   <BranchRow
                     label="If YES" tone="up"
@@ -519,6 +545,14 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
                 <p className="mt-3 text-[10px] leading-[1.6] text-[#a19ca5]">
                   Each result is set on its own, so you can trade one and stop on the other. If the market is cancelled or the result is unclear, Sequence does nothing either way.
                 </p>
+                {successor && isCadenceSubstitution(trigger, successor) && (
+                  <p className="mt-3 rounded-sm border-l-[3px] border-[#ff9b7f] bg-[#fff8f4] p-3 text-[10px] leading-[1.6] text-[#8a5f47]">
+                    No {marketName(trigger)} window is open after this one, so the follow-on trade goes into
+                    the next {marketName(successor)} instead — a {intervalLabel(successor.intervalSec)} contract,
+                    settling {countdown(successor.expiry)}. That is the market it will actually trade, and the
+                    horizon it will actually run for.
+                  </p>
+                )}
               </Question>
 
               <Question n={3} title="How much on each trade?">

@@ -2,7 +2,10 @@
 // (src/SequenceVault.sol) and app/planner/model.ts so the builder edits the same
 // object that gets encoded into armStep, and validates by the same rules the
 // vault enforces on chain.
-import { stepIdFor } from "./chain/vault.js";
+import { stepIdFor, assertVaultStep, VAULT_STEP_FIELDS } from "./chain/vault.js";
+
+// Re-exported so callers that think of this as a strategy concern still work.
+export { assertVaultStep, VAULT_STEP_FIELDS };
 import { normaliseInterval } from "./lib/language.js";
 
 // What the account does when an outcome wins. The buy values are the pool's own
@@ -266,12 +269,6 @@ const ZERO32 = `0x${"00".repeat(32)}`;
 // contract overwrites all three the moment it acts. Producing a complete,
 // encodable struct is this function's whole job, so it does it here once rather
 // than asking each caller to remember.
-export const VAULT_STEP_FIELDS = [
-  "status", "triggerMarketId", "pool", "price", "quantity", "expireNs",
-  "orderType", "actionOnWin0", "actionOnWin1", "notionalCap",
-  "successorMarketId", "nextStepId", "orderId", "winningOutcome",
-];
-
 export function toVaultStep(step, now = Date.now(), nextStepId = ZERO32) {
   return {
     // The rule.
@@ -291,19 +288,6 @@ export function toVaultStep(step, now = Date.now(), nextStepId = ZERO32) {
     orderId: 0n,        // nothing placed yet
     winningOutcome: 0,  // nothing read yet
   };
-}
-
-/// Refuse to hand the ABI encoder a hole.
-///
-/// A missing numeric field becomes `BigInt(undefined)` deep inside viem, which
-/// reads as a bug in the wallet rather than in us. This names the field instead,
-/// before a wallet is ever opened.
-export function assertVaultStep(step, where = "this step") {
-  const missing = VAULT_STEP_FIELDS.filter((f) => step?.[f] === undefined || step?.[f] === null);
-  if (missing.length) {
-    throw new Error(`${where} is incomplete: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} missing.`);
-  }
-  return step;
 }
 
 export const onchainStepId = (strategy, step) => stepIdFor(`${strategy.name}::${step.name}`);
