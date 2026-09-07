@@ -437,7 +437,9 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
     (isCoreAsset(b.asset) ? 1 : 0) - (isCoreAsset(a.asset) ? 1 : 0)
     || (a.expiry || 0) - (b.expiry || 0);
   const startable = watchable.filter((m) => nextWindowFor(markets.open, m)).sort(byRelevance);
-  const deadEnd = watchable.filter((m) => !nextWindowFor(markets.open, m)).sort(byRelevance);
+  // Counted, not listed: worth telling somebody why the list is short when most
+  // of the venue has nowhere to continue into, without cluttering the control.
+  const deadEnd = watchable.filter((m) => !nextWindowFor(markets.open, m));
 
   return (
     <section id="build" className="product-band">
@@ -507,27 +509,38 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
                   onChange={(e) => chooseWatch(step.key, e.target.value)}
                 >
                   <option value="">Choose a market…</option>
-                  {startable.map((m) => (
-                    <option key={m.marketId} value={m.marketId}>
-                      {marketName(m)}{marketShortAsk(m) ? ` · ${marketShortAsk(m)}` : ""} — {settlePhrase(m.expiry)}
-                    </option>
-                  ))}
-                  {deadEnd.length > 0 && (
-                    <optgroup label="No follow-on market open yet — cannot start a sequence">
-                      {deadEnd.map((m) => (
-                        <option key={m.marketId} value={m.marketId} disabled>
-                          {marketName(m)} — nothing open to trade into
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
+                  {startable.map((m) => {
+                    const into = nextWindowFor(markets.open, m);
+                    return (
+                      <option key={m.marketId} value={m.marketId}>
+                        {marketName(m)} — {settlePhrase(m.expiry)}
+                        {into ? ` · then trades ${marketName(into)}` : ""}
+                      </option>
+                    );
+                  })}
                 </select>
+                {deadEnd.length > 0 && (
+                  <p className="mt-2 text-[10px] leading-[1.5] text-[#a19ca5]">
+                    {deadEnd.length} other {deadEnd.length === 1 ? "market has" : "markets have"} no later window open
+                    to trade into yet, so {deadEnd.length === 1 ? "it is" : "they are"} not listed.
+                  </p>
+                )}
                 {trigger && (
                   <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-[#7f7984]">
                     <span>{marketQuestion(trigger)}</span>
                     <span className="text-[#a19ca5]">{settlePhrase(trigger.expiry)}</span>
                     {odds !== null && <span className="odds-pill">{odds}% yes</span>}
                   </div>
+                )}
+                {trigger && successor && isCadenceSubstitution(trigger, successor) && (
+                  // Only one window per series is open at a time, so the
+                  // follow-on is usually a different length. Said once, plainly,
+                  // where the market details already are — it used to be a coral
+                  // banner that fired on nearly every pick and read like a
+                  // blocker sitting under the picker.
+                  <p className="mt-2 text-[10px] leading-[1.5] text-[#a19ca5]">
+                    Trades into {marketName(successor)}, settling {countdown(successor.expiry)}.
+                  </p>
                 )}
               </Question>
 
@@ -551,14 +564,6 @@ export default function Builder({ markets, vault, wallet, initialDraft = null, i
                 <p className="mt-3 text-[10px] leading-[1.6] text-[#a19ca5]">
                   Each result is set on its own, so you can trade one and stop on the other. If the market is cancelled or the result is unclear, Sequence does nothing either way.
                 </p>
-                {successor && isCadenceSubstitution(trigger, successor) && (
-                  <p className="mt-3 rounded-sm border-l-[3px] border-[#ff9b7f] bg-[#fff8f4] p-3 text-[10px] leading-[1.6] text-[#8a5f47]">
-                    No {marketName(trigger)} window is open after this one, so the follow-on trade goes into
-                    the next {marketName(successor)} instead — a {intervalLabel(successor.intervalSec)} contract,
-                    settling {countdown(successor.expiry)}. That is the market it will actually trade, and the
-                    horizon it will actually run for.
-                  </p>
-                )}
               </Question>
 
               <Question n={3} title="How much on each trade?">
