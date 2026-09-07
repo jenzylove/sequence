@@ -136,3 +136,50 @@ test("without a known market expiry the order is still bounded", () => {
   assert.equal(expiry, BigInt(Math.floor(now / 1000) + 3600) * 1_000_000_000n,
     "an unknown market still gets a bounded order rather than an open-ended one");
 });
+
+
+// ---- the module that actually signs must resolve every name it uses --------
+//
+// Activation crashed with "assertVaultStep is not defined": the guard was called
+// in chain/vault.js but nothing imported it. Neither suite caught it — the unit
+// tests imported strategy.js directly, and the browser suite cannot sign, so
+// neither ever executed the arming path. This one does.
+
+test("the write path resolves its own references", async () => {
+  const vault = await import("./chain/vault.js");
+  for (const fn of ["armStep", "queueStep", "sendVaultTx", "createVault", "fundVaultCollateral"]) {
+    assert.equal(typeof vault[fn], "function", `${fn} should be exported`);
+  }
+
+  // Reaching the network means every identifier resolved. A ReferenceError here
+  // is the bug this test exists for; a contract or transport error is fine.
+  const strategy = twoStepStrategy();
+  const ids = strategy.steps.map((s) => onchainStepId(strategy, s));
+  let referenceError = null;
+  try {
+    await vault.armStep({
+      provider: { request: async () => { throw new Error("no wallet in tests"); } },
+      account: `0x${"11".repeat(20)}`,
+      stepId: ids[0],
+      step: toVaultStep(strategy.steps[0], Date.now(), ids[1]),
+      vault: `0x${"22".repeat(20)}`,
+    });
+  } catch (e) {
+    if (e instanceof ReferenceError || /is not defined/.test(e.message)) referenceError = e.message;
+  }
+  assert.equal(referenceError, null, `arming hit an unresolved reference: ${referenceError}`);
+});
+
+test("an incomplete queued step is refused by name, through the real export", async () => {
+  const vault = await import("./chain/vault.js");
+  const strategy = twoStepStrategy();
+  const broken = { ...toVaultStep(strategy.steps[1], Date.now(), ZERO32), notionalCap: undefined };
+  // The guard runs while the arguments are built, so it throws synchronously
+  // rather than returning a rejected promise.
+  let message = null;
+  try {
+    await vault.queueStep({ provider: {}, account: `0x${"11".repeat(20)}`, stepId: ZERO32, step: broken });
+  } catch (e) { message = e.message; }
+  assert.match(message ?? "", /incomplete: notionalCap is missing/,
+    "the guard should name the field rather than fail inside the encoder");
+});
