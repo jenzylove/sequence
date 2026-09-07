@@ -1,96 +1,120 @@
-# Verified interface facts (Shannon)
+# Verified interface facts and live proof — Somnia Shannon
 
-Source of truth: `@somnia-chain/markets-sdk` (installed locally, 0.25.0+) + official
-dreamDEX developer docs. Nothing here is a hand-supplied signature or hash.
+This file is the compact provenance record for the interfaces, addresses and production claims used by Sequence.
 
-## Resolution event (the load-bearing fact)
-- Signature: `AnswerDelivered(uint256 oracleQuestionId, bytes32 marketId, uint32 payoutDenominator, uint256[] payoutNumerators, bool voided)`
-- Canonical: `AnswerDelivered(uint256,bytes32,uint32,uint256[],bool)`
-- Indexed: `oracleQuestionId` (topic1), `marketId` (topic2). Non-anonymous.
+## DreamDEX resolution event
+
+Canonical event:
+
+`AnswerDelivered(uint256,bytes32,uint32,uint256[],bool)`
+
+- emitter: OracleHub `0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b`
+- indexed: `oracleQuestionId` (topic1), `marketId` (topic2)
 - topic0: `0x981074cb1e0ea7eac4cbc8c4c9ddbef8b964373e7e8cd0904c8e0951c4430541`
-- Emitter: OracleHub `0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b`
-- Derived via: `viem.toEventSelector(oracleHubEventsAbi.AnswerDelivered)`
+- outcome truth: `payoutNumerators` / `payoutDenominator`, with explicit `voided`
 
-## Why not `Resolved(uint8)`
-No `Resolved`/`Voided` event exists in any shipped ABI. Market Resolved(4)/Voided(5)
-are STATUS values read from market state, not filterable events. The real reactive
-signal is the OracleHub `AnswerDelivered`. Outcome comes from the payout vector
-(`payoutNumerators`/`payoutDenominator`), and `voided` is an explicit bool.
+The signature and addresses were derived from the installed DreamDEX/Somnia SDK surfaces and checked against the deployed Shannon contracts.
 
-## Addresses (testnet == mainnet via CREATE3, except collateral)
-- OracleHub:          0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b
-- BinaryMarketsModule:0x3ecC694Cef705358864a646142ac17A90E29e388
-- MarketsCore:        0x2802504314685D89bF6C992CA5a8e7cC78bc0294
-- BinarySettlement:   0xbF4a49e0Dfd092e5FBE8E5761064C49533e6Ed23
-- OutcomeToken6909:   0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9
-- Test USDC (6dp):    0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E
+## Core addresses
 
-## Reactivity
-- Precompile / caller: 0x0000000000000000000000000000000000000100
-- Handler base: SomniaEventHandler (@somnia-chain/reactivity-contracts)
-- Filter: emitter + eventTopics (topic0, optionally topic2=marketId)
-- Guarantee: event + state delivered atomically from the same block.
+| Contract | Address |
+| --- | --- |
+| OracleHub | `0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b` |
+| BinaryMarketsModule | `0x3ecC694Cef705358864a646142ac17A90E29e388` |
+| MarketsCore | `0x2802504314685D89bF6C992CA5a8e7cC78bc0294` |
+| BinarySettlement | `0xbF4a49e0Dfd092e5FBE8E5761064C49533e6Ed23` |
+| OutcomeToken6909 | `0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9` |
+| Test USDC (6 dp) | `0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E` |
 
-## Successor action constraints (from functions docs)
-- Use `placeOrderFor(owner, ...)` selector 0x80054449; owner grants it via operator registry.
-- Owner should be in MANUAL VAULT MODE with pre-deposited collateral (handler can't send msg.value).
-- Testnet builder cap = 0 -> builder = address(0), builderFeeBpsTimes1k = 0.
-- expireTimestampNs is NANOSECONDS and strictly future.
+## Sequence deployment
 
-
-## Sequence deployment (current)
-
-| What | Address / value |
+| Component | Address / value |
 | --- | --- |
 | SequenceVaultFactory | `0xF492234a4b522D19dd76dBB435ad9471a652f950` |
-| SequenceVault (author's, created by the factory) | `0x0185CA254C9e7b184b566e7037160334519cC9f6` |
-| Reactivity subscription (vault-owned) | `16077958` |
-| Reactivity subscription (EOA-owned, `isGuaranteed: true` experiment) | `16072852` |
-| BinarySettlement (redemption is paid from here) | `0xbF4a49e0Dfd092e5FBE8E5761064C49533e6Ed23` |
-| Outcome token singleton (ERC-6909) | `0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9` |
+| Hardened SequenceSubscriptionManager | `0x88a3b51437c959ec80123f8cd12be3ae817bf529` |
+| Manager deploy tx | `0x23321ed2975cbc2a1390ae8c14d49225a4e84047a67dbe9b59ec7da4083a3b28` |
+| Final proof trader | `0x8c2E517fC6409EddE58b4D5875e13251E492bB84` |
+| Final proof vault | `0x34E1583Fc4753C2fCB3E2a818c020167A0b7A8Bc` |
+| Final proof registration tx | `0x710f64ebd005d073531df8215adb5cd813e4ae713c702c458627b38e13f60bd2` |
+| Final proof subscriptions | `16421932`, `16421933` |
 
-Subscription options in use, read back from the precompile via
-`getSubscriptionInfo`: topic0 `AnswerDelivered`, emitter OracleHub, handler the
-vault, selector `0x53edf33d`, priorityFeePerGas 1 gwei, maxFeePerGas 40 gwei,
-gasLimit 10,000,000, isGuaranteed false.
+The hardened manager is bound to the canonical factory. It may only spend shared Reactivity capacity for a caller's own factory-created vault and only for markets already present in that vault's real dependent chain.
 
-`isGuaranteed` cannot be set through `SomniaExtensions` or the SDK's
-`subscribe()`; both hardcode it to false. Subscription `16072852` was therefore
-created by calling the precompile's raw `subscribe` directly with
-`isGuaranteed: true`, owned by a funded EOA (62.29 SOM) rather than a contract,
-priorityFeePerGas 2 gwei and maxFeePerGas 60 gwei, pointed at the deployed vault.
-It read back correct on every field. The handler was still never invoked.
+## Reactivity architecture
 
-`SomniaExtensions.SUBSCRIPTION_OWNER_MINIMUM_BALANCE` is 32 ether and the
-subscribing contract's balance drifts down over time, so the vault is funded to
-35 SOM rather than exactly 32. Falling under the minimum is silent.
+Somnia charges the subscription owner while allowing the owner to name another contract as handler.
 
-## Redemption, measured on chain
+Sequence uses that separation deliberately:
 
-`BinaryMarketsModule.redeem(uint32, bytes32, bytes32, uint8, uint256)` burns the
-caller's ERC-6909 outcome tokens and pays collateral. It requires the caller to
-have made the module an **operator** on the singleton — a per-owner flag, not a
-per-token allowance — so `SequenceVault` calls `setOperator` once and caches it.
+- `SequenceSubscriptionManager` owns the subscriptions and keeps the shared native stake.
+- each trader's own `SequenceVault` is the handler.
+- the manager cannot withdraw trader collateral or alter trader rules.
+- registration walks the stored dependent chain and creates subscriptions for every link atomically.
 
-Measured redemption, tx
-`0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34`:
+`SomniaExtensions.SUBSCRIPTION_OWNER_MINIMUM_BALANCE` is 32 native tokens. The final hardened manager was funded to roughly 35 STT; the final proof trader held only 3.71 STT and therefore did not carry the Reactivity stake.
 
-| | |
-| --- | --- |
-| Market | `0x…13bc6` (BTC 1h), settlement `finalized`, `voided=false`, payouts `[0, 10000000]` |
-| Held before | 0 YES, 4,366,000 NO |
-| Redeemed | outcome index 1, 4,366,000 tokens |
-| Collateral | $198.0732 -> $202.4392, gained $4.3660 |
-| Held after | 0 YES, 0 NO |
+## Final unattended two-step proof
 
-A payout numerator of `10000000` against 4,366,000 tokens returned exactly
-4,366,000 collateral units, so the numerator denominator is `1e7` and a winning
-token pays 1 collateral unit.
+Source: `docs/CHAINED_REACTIVITY_LIVE.json`.
 
-## Order units (measured, not assumed)
+Question proved:
 
-`BinaryPool.getOrderBookParameters()` on Shannon binary pools returns
-`tickSize 1000, minQuantity 1000, lotSize 1000`. Prices are 6dp fractions of one
-collateral unit and quantities are 6dp base units, so an order costs
-`price * quantity / 1e6`. An order below `minQuantity` REVERTS
-(`QuantityBelowMinimum(given, minimum)`) rather than returning false.
+> Can one user activate a dependent two-step Sequence once and leave, with Somnia Reactivity advancing both settlements automatically?
+
+Answer: **yes**.
+
+Timeline:
+
+```text
+2026-09-06 10:00:01Z  Triggered -> Placed -> StepArmed -> ChainAdvanced
+2026-09-06 12:00:02Z  ExposureReleased -> Triggered -> Placed
+```
+
+- one registration transaction
+- two exact-market subscriptions owned by the hardened manager
+- handler for both subscriptions = trader's own vault
+- both dependent steps ended `PLACED`
+- manual `syncResolution` calls = **0**
+
+Step 1 tx: `0x035a66e4c8f854de994e2fd84c1b0bbf243092401b70690e3a924c854684b27e`
+
+Step 2 tx: `0xbbb54e73bcf2f3de7aa13f5ecbed5c6045091f8ce152da1093685e6bfcab0113`
+
+## Multi-user shared-stake proof
+
+Source: `docs/SHARED_REACTIVITY_LIVE.json`.
+
+Two unrelated wallets, each with its own factory-created vault and neither holding a 32 STT stake, both advanced automatically under one project-owned Reactivity stake.
+
+That earlier proof used manager `0x14978582d694ee15e8228f012a7d5ee64972c0f7`; it was later superseded by the hardened canonical-factory manager above.
+
+## Redemption proof
+
+Source: `docs/REDEMPTION.json`.
+
+Measured redemption tx:
+
+`0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34`
+
+A winning ERC-6909 position was redeemed back into collateral. The measured vault balance moved from `$198.0732` to `$202.4392` while the winning position went to zero.
+
+## Order units and execution semantics
+
+Measured from Shannon binary pools:
+
+- `tickSize = 1000`
+- `minQuantity = 1000`
+- `lotSize = 1000`
+- price uses 6-decimal fractions of one collateral unit
+- quantity uses 6-decimal base units
+- notional cost = `price * quantity / 1e6`
+
+`placeBinaryOrder` returning success means the order was accepted by the pool. It does **not** prove a fill. Sequence therefore records the state as `PLACED`, not `EXECUTED`.
+
+## Delivery caveat
+
+Reactivity itself has been proven to deliver and to drive real Sequence execution. The remaining platform caveat is narrower: OracleHub does not emit `AnswerDelivered` for every market that finalizes, and the set of delivered market series varies over time.
+
+For that reason Sequence keeps permissionless `syncResolution` as a recovery path. It cannot invent an outcome; it reads the same finalized market state and shares the same idempotency boundary as the Reactivity callback.
+
+See `docs/FINDINGS.md` for the full integration feedback report and the corrected evidence history.

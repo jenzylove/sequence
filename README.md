@@ -4,210 +4,150 @@
 
 Sequence is outcome-driven execution for rolling DreamDEX Event Contracts on Somnia.
 
-You define a bounded sequence of actions before a market settles. When the watched
-DreamDEX market resolves, Somnia Reactivity delivers the resolution to the Sequence
-vault, the vault evaluates the branch, and it places the next authorized order using
-its own escrowed collateral, inside caps it enforces itself.
+A trader defines a bounded sequence before a market settles. When the watched DreamDEX market resolves, Somnia Reactivity delivers the result to that trader's own Sequence vault. The vault evaluates the outcome, places only the pre-authorized successor order, and then arms the next dependent step.
 
-Sequence does not predict markets. It executes rules you committed to in advance.
+Sequence does not predict markets. It executes rules the trader committed to in advance.
 
-## The loop
+## Why Sequence
 
-```
-DreamDEX market resolves
-  -> OracleHub emits AnswerDelivered
-  -> Somnia Reactivity invokes SequenceVault
-  -> the vault reads the winning outcome and picks the branch
-  -> it places one bounded successor order, or records why it skipped
-```
+Prediction-market trades are usually isolated: a market settles, then the trader has to come back, inspect the result, and decide what to do next.
 
-## What the vault guarantees
+Sequence turns that into a programmable workflow:
 
-`SequenceVault` is the trustless executor. The planner and the frontend can be wrong
-without putting the bankroll at risk:
+`market resolves -> bounded trade -> next market resolves -> bounded trade`
 
-- one vault per wallet, deployed by a factory that keeps no authority over it
-- a per-outcome branch: each result independently buys YES, buys NO, or stops,
-  and a stop places nothing while still consuming the resolution
-- a conditional chain: later steps are queued without listening, and are armed
-  only after the step before them actually places an order
-- PLACED, never EXECUTED: acceptance by the pool is all the vault can observe
-  from inside the callback, so it never claims a fill it cannot see
-- exposure released when the market traded into resolves, so a rolling sequence
-  cannot block itself against its own cap
-- a per-step notional cap, checked at arm time and again at execution
-- a vault-wide maximum outstanding notional
-- one execution per `(marketId, questionId)`, so a resolution cannot fire twice
-- Reactivity is the primary delivery path, and a permissionless `syncResolution`
-  is the backstop. Neither can invent an outcome: both run the same rules against
-  the market's own finalized state, share one idempotency key, and can only
-  execute what the owner precommitted
-- owner-only arming, pause, step cancellation, and fund recovery
+A later step cannot become active until the previous step has actually placed its order.
 
-## Using it
+## How it works
 
-Connect a wallet and you land on your desk: what is at risk, your limit, what is
-still free, live BTC and ETH context with settlement countdowns, and your
-sequences split into Drafts, Live and Finished.
+1. Choose a live DreamDEX Event Contract to watch.
+2. Define what should happen for each outcome: buy YES, buy NO, or stop.
+3. Set the position size and hard risk caps.
+4. Optionally add dependent follow-on steps.
+5. Activate once from the user's wallet.
+6. Somnia Reactivity delivers matching `AnswerDelivered` events to the user's vault.
+7. The vault rechecks the finalized outcome and executes only the action already stored onchain.
+8. If the order is accepted, the next step is armed automatically.
 
-To create one, describe it:
+Reactivity is the primary delivery path. A permissionless `syncResolution` path exists only as a recovery mechanism for markets that finalize without a corresponding OracleHub `AnswerDelivered` event. Both paths use the same finalized market state and the same idempotency key.
 
-> roll BTC three times, $2 a trade, $5 total
+## Safety model
 
-Sequence reads it back as plain rules, both outcomes spelled out, with the worst
-case stated before anything is signed. The translation is deterministic and
-grounded in markets that are actually open: it refuses an unknown market rather
-than inventing one, and it never forecasts price. Activating takes one wallet
-approval per step. Each step then watches its own market and runs on its own.
+`SequenceVault` is the trust boundary.
 
-The manual builder is still there as the advanced surface, and every raw
-identifier, pool address, event name and transaction hash lives behind
-"Onchain details".
+- one canonical vault per wallet, created by `SequenceVaultFactory`
+- the trader owns the vault and its collateral
+- the shared Reactivity manager cannot withdraw user funds or rewrite strategies
+- each outcome branch is stored before activation
+- each step has its own notional cap
+- the vault has a maximum outstanding-notional cap
+- later steps stay pending until their predecessor succeeds
+- one execution per `(marketId, questionId)` prevents duplicate resolution handling
+- owner-only pause, cancellation and fund recovery
+- order acceptance is recorded as `PLACED`, never falsely described as a fill
 
-## Repository
+## Shared Reactivity, without a 32 STT burden per trader
 
-| Path | What it is |
-| --- | --- |
-| `src/SequenceVault.sol` | The bounded on-chain executor and its state machine |
-| `src/SequenceHandler.sol` | The earlier reactivity spike that proved the event path |
-| `src/IDreamDEX.sol`, `src/Verified.sol` | Interfaces and constants derived from the markets SDK |
-| `src/SequenceVaultFactory.sol` | One vault per wallet, so the product is multi-tenant |
-| `test/` | 74 Foundry tests: branches, stops, chaining, caps, exposure, recovery, access |
-| `app/planner/` | Off-chain strategy model, simulation, and vault client |
-| `app/web/src/lib/` | Trader vocabulary, the command parser, draft storage |
-| `app/web/src/components/` | Desk, command surface, builder, onchain details |
-| `app/web/` | The product frontend |
-| `docs/VERIFIED.md` | Provenance for every interface fact and address |
-| `docs/FINDINGS.md` | Integration feedback for the DreamDEX and Somnia teams |
-| `docs/LIVE_FIRE.json` | The recorded live-fire runs, written by the harness |
-| `docs/REDEMPTION.json` | The capital cycle closing: a won position turned back into collateral |
+Somnia charges the subscription owner while allowing that owner to point delivery at another contract as the handler.
 
-## Where the data comes from
+Sequence uses `SequenceSubscriptionManager` as shared infrastructure: the manager holds the Reactivity stake and owns the subscriptions, while each trader's own vault remains the handler that enforces that trader's rules.
 
-Nothing in the interface is invented. Markets, pools, question text, expiries and
-payout vectors come from the Somnia markets indexer. Vault state, step status and
-the execution timeline are contract reads and decoded contract events. Arming is a
-real `armStep` transaction signed in the user's own wallet.
+The hardened manager also validates that the caller owns the canonical factory vault and registers the full dependent market chain atomically, so later steps remain automatic after the first step advances.
 
-Simulation is the one thing computed locally, and it is labelled as such. It replays
-a plan against genuinely settled markets using the same winner, branch, idempotency
-and cap logic as the vault.
+## Live unattended proof
 
-## Run it
+The central product claim has been proven on Somnia Shannon.
 
-```bash
-forge test                       # 74 contract tests
-cd app && npx tsx --test planner/live.test.ts   # planner against live Shannon
-cd app/web && npm run dev        # the product
+One trader activated one two-step dependent sequence once. A single registration created subscriptions `16421932` and `16421933` through the hardened manager.
+
+Then, with no user action and zero `syncResolution` calls:
+
+```text
+10:00:01Z  Triggered -> Placed -> StepArmed -> ChainAdvanced
+12:00:02Z  ExposureReleased -> Triggered -> Placed
 ```
 
-Verification:
+Both dependent steps reached `PLACED`, two settlements two hours apart.
 
-```bash
-cd app/web
-node scripts/gen-abi.mjs         # regenerate the ABI from the compiled artifact
-node scripts/verify-arm.mjs      # the real armStep path against live chain state
-npm run build && node scripts/e2e.mjs   # browser run of the whole journey
-node scripts/verify-clean-clone.mjs     # build HEAD in a fresh clone, as a deploy does
-node scripts/verify-readiness.mjs       # what is actually blocking a demo, read from chain
-node scripts/live-fire.mjs --watch      # watch an armed run through to settlement
-```
+Evidence: [`docs/CHAINED_REACTIVITY_LIVE.json`](docs/CHAINED_REACTIVITY_LIVE.json)
 
-The last one matters: a local build only proves the working tree compiles, not
-that everything it needs was committed. It clones HEAD into a temp directory and
-builds there, which is what a deployment actually sees.
+The same architecture was also proven across two unrelated users sharing one Reactivity stake, with separate user-owned vaults and no manual resolution step. Evidence: [`docs/SHARED_REACTIVITY_LIVE.json`](docs/SHARED_REACTIVITY_LIVE.json).
 
-## Current status
+The capital cycle was separately closed onchain by redeeming a winning DreamDEX position back into spendable collateral. Evidence: [`docs/REDEMPTION.json`](docs/REDEMPTION.json).
 
-Live and verified on Shannon:
-
-- `SequenceVaultFactory` deployed, and the owner's vault created **by** it, so a
-  visiting wallet resolves to its own account or is offered one. A stranger
-  address resolves to none, which is what makes provisioning honest
-- subscription `16022724` open, so DreamDEX resolutions reach the vault
-- $200 of test collateral, with a $5 total risk limit the contract enforces
-- orders priced against the live book, with NO derived as the complement of the
-  YES side, and the successor market re-checked against the module before
-  anything is signed
-- 86 contract tests, 23 unit tests for sizing and wallet scoping, 6 planner
-  tests against live chain, and a browser suite including a wallet that owns nothing
-
-Proven on chain:
-
-- a real settlement drove a real bounded order. Recorded in `docs/LIVE_FIRE.json`
-  with the receipt broken out in `docs/FILL_EVIDENCE.json`:
-  `ResolutionSynced -> Triggered -> Placed`, order id `110680464442257339085`,
-  $2.0000 of collateral out and $1.9200 returned, so $0.0800 net was consumed.
-  The pool accepted the bounded order; the vault cannot observe fill size from
-  inside the callback, so no fill quantity is claimed beyond that delta
-- a genuinely new wallet completed the journey signing for itself, in
-  `docs/FRESH_WALLET.json`: it started with no account, created its own vault
-  through the factory, was confirmed isolated from the author's, and activated a
-  sequence
-- **the capital cycle closes.** One settlement drove a real order, the market that
-  order bought into settled in turn, and the winning position was redeemed back
-  into spendable collateral. On the deployed vault, in `docs/REDEMPTION.json`:
-  `StepArmed -> ResolutionSynced -> Triggered -> Placed -> ExposureReleased -> Redeemed`.
-  4,366,000 outcome tokens became $4.3660 of collateral against a $2.0000 order,
-  the balance moved $198.0732 -> $202.4392, and the position went to zero
-  (`0xb7cc85e283b290886e83f242e123a599ca68804c588a0148fb785bada4823e34`)
-
-Also proven on chain:
-
-- **Reactivity delivers, and drove a sequence with nobody watching.** In block
-  `480220742`, carrying 4 validated `AnswerDelivered` events, the Reactivity
-  precompile called `onEvent` on the vault 8 times, none reverting. One of those
-  markets was our armed trigger, and the vault went `StepArmed -> Triggered ->
-  Placed` with no `ResolutionSynced` in the timeline. Recorded in
-  `docs/REACTIVITY_EXPERIMENT.json` and `docs/LIVE_FIRE.json` run 3
-
-A dependent sequence runs itself, end to end:
-
-- **Two settlements, two hours apart, nobody watching.** One activation, one
-  registration, then: `Triggered → Placed → StepArmed → ChainAdvanced` at
-  10:00:01Z, and `ExposureReleased → Triggered → Placed` at 12:00:02Z. Both steps
-  placed, **zero manual resolution calls**, and the trader held 3.71 STT the whole
-  time. Recorded in `docs/CHAINED_REACTIVITY_LIVE.json`
-
-Who pays for automatic execution:
-
-- **Sequence does, not the trader.** Somnia charges the subscription *owner* and
-  separately lets that owner name any contract as the *handler*, so
-  `SequenceSubscriptionManager` holds one 35 STT stake and every user's own vault
-  is a handler on subscriptions it owns. A trader stakes nothing. Proven with two
-  unrelated wallets holding 1.72 STT each, both advancing with no manual step
-  (`docs/SHARED_REACTIVITY_LIVE.json`)
-- **Delivery depends on the market.** OracleHub does not emit `AnswerDelivered`
-  for every market that settles, and which series it is answering changes over
-  time. A sequence watching a window the oracle has not answered is advanced by
-  the permissionless `syncResolution` path instead. That is a property of the
-  oracle, not of Sequence, and it is why the recovery path exists. See
-  `docs/FINDINGS.md` §1c
-
-Previously claimed here, now withdrawn:
-
-- This README used to say Reactivity had never been seen to deliver. That was
-  wrong. The evidence harness passed a raw `topics` array to viem's `getLogs`,
-  which ignores it, so it matched an unrelated `DrainContinuation` event and drew
-  a conclusion from a block that never carried an `AnswerDelivered`. The
-  `isGuaranteed` hypothesis is withdrawn too: both the guaranteed EOA-owned
-  subscription and the ordinary vault-owned one delivered in the same block. See
-  `docs/FINDINGS.md` §1b for the full retraction and the corrected method
-
-Deliberately not built yet:
-
-- automatic redemption inside the resolution callback. Redemption is a separate
-  permissionless call on purpose: a settlement service having a bad day must
-  never be able to stop a sequence from trading
-
-## Deployed addresses (Shannon testnet)
+## Deployed Shannon contracts
 
 | Contract | Address |
 | --- | --- |
 | SequenceVaultFactory | `0xF492234a4b522D19dd76dBB435ad9471a652f950` |
-| SequenceVault (owner's) | `0x0185CA254C9e7b184b566e7037160334519cC9f6` |
+| Hardened SequenceSubscriptionManager | `0x88a3b51437c959ec80123f8cd12be3ae817bf529` |
 | OracleHub | `0xe40db387cC98601Dd11bd634fF2f3AD5686dE32b` |
 | BinaryMarketsModule | `0x3ecC694Cef705358864a646142ac17A90E29e388` |
 | Test USDC | `0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E` |
 
-See `docs/VERIFIED.md` for how each of these was derived.
+The final chained proof used vault `0x34E1583Fc4753C2fCB3E2a818c020167A0b7A8Bc` and registration transaction `0x710f64ebd005d073531df8215adb5cd813e4ae713c702c458627b38e13f60bd2`.
+
+## Where the data comes from
+
+Nothing in the product invents market state.
+
+- market ids, pools, questions, expiries and payout vectors come from DreamDEX/Somnia market data
+- resolution truth comes from the deployed OracleHub and finalized market state
+- vault status, sequence state, balances and execution history come from contract reads/events
+- arming and activation are real wallet-signed transactions
+- order pricing is grounded in the live DreamDEX book
+
+Simulation is computed locally and labelled as simulation.
+
+## Stack
+
+- Solidity / Foundry
+- Somnia Shannon testnet
+- DreamDEX Event Contracts + market data
+- `@somnia-chain/reactivity-contracts`
+- `@somnia-chain/markets-sdk`
+- React + Vite
+- viem
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `src/SequenceVault.sol` | bounded user-owned execution vault |
+| `src/SequenceVaultFactory.sol` | one canonical vault per wallet |
+| `src/SequenceSubscriptionManager.sol` | shared Reactivity stake + full-chain registration |
+| `src/IDreamDEX.sol`, `src/Verified.sol` | verified DreamDEX interfaces/constants |
+| `test/` | contract state-machine and security coverage |
+| `app/planner/` | deterministic planning/simulation |
+| `app/web/` | user-facing product |
+| `docs/VERIFIED.md` | interface/address/proof provenance |
+| `docs/FINDINGS.md` | required SDK/docs integration feedback report |
+| `docs/CHAINED_REACTIVITY_LIVE.json` | final two-step unattended proof |
+| `docs/SHARED_REACTIVITY_LIVE.json` | two-user shared-stake proof |
+| `docs/REDEMPTION.json` | real redemption evidence |
+
+## Verification
+
+```bash
+forge test -vv
+
+cd app/web
+npm ci
+npm run test:units
+npm run e2e
+npm run verify:refs
+npm run verify:clone
+```
+
+Latest final verification before submission:
+
+- **98 / 98** contract tests
+- **57 / 57** unit tests
+- **61 / 61** browser checks
+- **40** modules reference-checked
+
+## Honest limitation
+
+Automatic Reactivity delivery depends on OracleHub actually emitting `AnswerDelivered` for the watched market. Delivery has been observed to vary by market series over time. Sequence therefore retains the permissionless `syncResolution` recovery path instead of pretending every finalized market is guaranteed to produce the event.
+
+See [`docs/FINDINGS.md`](docs/FINDINGS.md) for the full integration report and corrections discovered during the build.

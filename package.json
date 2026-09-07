@@ -1,7 +1,7 @@
 {
   "name": "sequence",
   "version": "1.0.0",
-  "description": "Proving ONE path, not building the product:",
+  "description": "Outcome-driven execution for rolling DreamDEX Event Contracts on Somnia.",
   "main": "index.js",
   "directories": {
     "doc": "docs",
@@ -9,9 +9,14 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "forge test -vv"
   },
-  "keywords": [],
+  "keywords": [
+    "somnia",
+    "dreamdex",
+    "prediction-markets",
+    "reactivity"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
