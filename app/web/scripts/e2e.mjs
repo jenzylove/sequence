@@ -30,8 +30,9 @@ const server = createServer((req, res) => {
   res.writeHead(200, { "content-type": MIME[extname(file)] || "application/octet-stream" });
   res.end(readFileSync(file));
 });
-await new Promise((r) => server.listen(4173, r));
-const base = "http://localhost:4173";
+await new Promise((r) => server.listen(0, r));
+const { port } = server.address();
+const base = `http://localhost:${port}`;
 
 const results = [];
 const check = (label, pass, detail = "") => {
